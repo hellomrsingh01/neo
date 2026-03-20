@@ -24,3 +24,46 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Keep form fields consistent even when browser autofills them. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus {
+  /* Force our light-gray input background (prevents Chrome blue/yellow tint). */
+  background-color: #f6f6f6 !important;
+  -webkit-text-fill-color: currentColor !important;
+  caret-color: currentColor !important;
+  -webkit-box-shadow: 0 0 0px 1000px #f6f6f6 inset !important;
+  box-shadow: 0 0 0px 1000px #f6f6f6 inset !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Ensure autofilled text respects read-only/edit styling on Profile form fields. */
+.profile-field.profile-readonly,
+.profile-field.profile-readonly:disabled {
+  color: #6b7280 !important;
+}
+
+.profile-field.profile-editing {
+  color: #111827 !important;
+}
+
+.profile-field.profile-readonly:-webkit-autofill,
+.profile-field.profile-readonly:-webkit-autofill:hover,
+.profile-field.profile-readonly:-webkit-autofill:focus {
+  -webkit-text-fill-color: #6b7280 !important;
+  caret-color: #6b7280 !important;
+}
+
+.profile-field.profile-editing:-webkit-autofill,
+.profile-field.profile-editing:-webkit-autofill:hover,
+.profile-field.profile-editing:-webkit-autofill:focus {
+  -webkit-text-fill-color: #111827 !important;
+  caret-color: #111827 !important;
+}
