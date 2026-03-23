@@ -8,41 +8,47 @@ import { supabase } from "@/lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 
 type AuthUserLike = {
+  id: string;
   email?: string | null;
-  user_metadata?: Record<string, unknown> | null;
 };
 
-function pickString(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v : null;
-}
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  gender: string | null;
+  phone: string | null;
+  address: string | null;
+};
 
-function buildFormFromAuthUser(user: AuthUserLike | null): ProfileFormData {
-  const meta = user?.user_metadata ?? {};
+function splitFullName(fullName: string | null | undefined): {
+  firstName: string;
+  lastName: string;
+} {
+  const trimmed = (fullName ?? "").trim();
+  if (!trimmed) return { firstName: "", lastName: "" };
+  const parts = trimmed.split(/\s+/);
   return {
-    firstName: pickString((meta as any)?.first_name) ?? null,
-    lastName: pickString((meta as any)?.last_name) ?? null,
-    gender: pickString((meta as any)?.gender) ?? null,
-    email: user?.email ?? null,
-    phoneNumber: pickString((meta as any)?.phone) ?? null,
-    address: pickString((meta as any)?.address) ?? null,
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" "),
   };
 }
 
 function buildHeaderUser(form: ProfileFormData, authUser: AuthUserLike | null) {
   const fullName =
-    [form.firstName, form.lastName].filter(Boolean).join(" ").trim() ||
-    pickString((authUser?.user_metadata as any)?.full_name) ||
-    "Alexa Rawles";
+    [form.firstName, form.lastName].filter(Boolean).join(" ").trim() || "Your name";
 
   return {
-    fullName,
-    email: form.email ?? authUser?.email ?? "alexarawles@gmail.com",
+    fullName: fullName,
+    email: form.email ?? authUser?.email ?? "you@neooffice.com",
   };
 }
 
 export default function ProfileSettingsPage() {
   const [authUser, setAuthUser] = useState<AuthUserLike | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileFormData>({
     firstName: "",
     lastName: "",
@@ -59,18 +65,30 @@ export default function ProfileSettingsPage() {
       try {
         const { data } = await supabase.auth.getUser();
         if (cancelled) return;
-        const u = (data?.user as any) as AuthUserLike | null;
-        setAuthUser(u);
-        setForm((prev) => {
-          const fromAuth = buildFormFromAuthUser(u);
-          return {
-            firstName: fromAuth.firstName ?? prev.firstName ?? "",
-            lastName: fromAuth.lastName ?? prev.lastName ?? "",
-            gender: fromAuth.gender ?? prev.gender ?? "",
-            email: fromAuth.email ?? prev.email ?? "",
-            phoneNumber: fromAuth.phoneNumber ?? prev.phoneNumber ?? "",
-            address: fromAuth.address ?? prev.address ?? "",
-          };
+        const user = data?.user;
+        if (!user?.id) return;
+
+        const currentUser: AuthUserLike = {
+          id: user.id,
+          email: user.email ?? null,
+        };
+        setAuthUser(currentUser);
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, gender, phone, address")
+          .eq("id", user.id)
+          .maybeSingle<ProfileRow>();
+
+        if (cancelled) return;
+        const { firstName, lastName } = splitFullName(profile?.full_name);
+        setForm({
+          firstName,
+          lastName,
+          gender: profile?.gender ?? "",
+          email: profile?.email ?? user.email ?? "",
+          phoneNumber: profile?.phone ?? "",
+          address: profile?.address ?? "",
         });
       } catch {
         // No-op: page still renders with fallbacks
@@ -85,12 +103,37 @@ export default function ProfileSettingsPage() {
 
   const headerUser = useMemo(() => buildHeaderUser(form, authUser), [authUser, form]);
 
-  const onToggleEdit = () => {
+  const onToggleEdit = async () => {
+    if (saving) return;
+
     if (isEditing) {
-      // Placeholder save behavior; integrate with your DB/user profile table later
+      if (!authUser?.id) return;
+      setSaving(true);
+      setSaveError(null);
+
+      const fullName = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: fullName || null,
+          gender: form.gender || null,
+          phone: form.phoneNumber || null,
+          address: form.address || null,
+        })
+        .eq("id", authUser.id);
+
+      if (error) {
+        setSaveError(error.message || "Failed to save profile.");
+        setSaving(false);
+        return;
+      }
+
+      setSaving(false);
       setIsEditing(false);
       return;
     }
+
+    setSaveError(null);
     setIsEditing(true);
   };
 
@@ -116,6 +159,9 @@ export default function ProfileSettingsPage() {
               disabled={!isEditing}
               onChange={(patch) => setForm((p) => ({ ...p, ...patch }))}
             />
+            {saveError ? (
+              <p className="mt-4 text-sm text-red-600">{saveError}</p>
+            ) : null}
           </section>
         </div>
       </main>

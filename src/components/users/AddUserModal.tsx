@@ -17,11 +17,9 @@ export type AddUserFormData = {
 };
 
 const ROLE_OPTIONS = [
-  { value: "", label: "Enter Role" },
-  { value: "Admin", label: "Admin" },
-  { value: "Designer", label: "Designer" },
-  { value: "Developer", label: "Developer" },
-  { value: "Manager", label: "Manager" },
+  { value: "admin", label: "Admin" },
+  { value: "internal", label: "Internal" },
+  { value: "external", label: "External" },
 ];
 
 const initialForm: AddUserFormData = {
@@ -38,7 +36,7 @@ export function AddUserModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit?: (data: AddUserFormData) => void;
+  onSubmit?: (data: AddUserFormData) => void | boolean | Promise<void | boolean>;
 }) {
   const [form, setForm] = useState<AddUserFormData>(initialForm);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -77,9 +75,10 @@ export function AddUserModal({
   }, [open]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      onSubmit?.(form);
+      const result = await onSubmit?.(form);
+      if (result === false) return;
       setForm(initialForm);
       onClose();
     },
@@ -191,8 +190,11 @@ export function AddUserModal({
                   onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
                   className={inputClass + " appearance-none pr-10"}
                 >
+                  <option value="" disabled>
+                    Select Role
+                  </option>
                   {ROLE_OPTIONS.map((opt) => (
-                    <option key={opt.value || "placeholder"} value={opt.value}>
+                    <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}

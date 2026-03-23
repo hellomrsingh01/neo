@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 function IconLock({ className }: { className?: string }) {
   return (
@@ -150,13 +151,103 @@ export default function NewPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [checkingRecovery, setCheckingRecovery] = useState(true);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
 
-  const canSubmit = useMemo(() => password.length > 0 && confirm.length > 0, [password, confirm]);
+  const canSubmit = useMemo(
+    () =>
+      password.length > 0 &&
+      confirm.length > 0 &&
+      !loading &&
+      !checkingRecovery &&
+      hasRecoverySession,
+    [password, confirm, loading, checkingRecovery, hasRecoverySession]
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    let isMounted = true;
+
+    const initRecoverySession = async () => {
+      try {
+        if (typeof window !== "undefined" && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.slice(1));
+          const accessToken = hashParams.get("access_token");
+          const refreshToken = hashParams.get("refresh_token");
+
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            window.history.replaceState(
+              null,
+              "",
+              window.location.pathname + window.location.search
+            );
+          }
+        }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!isMounted) return;
+        setHasRecoverySession(Boolean(session));
+      } catch {
+        if (!isMounted) return;
+        setHasRecoverySession(false);
+      } finally {
+        if (!isMounted) return;
+        setCheckingRecovery(false);
+      }
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+
+      if (event === "PASSWORD_RECOVERY") {
+        setHasRecoverySession(true);
+        setCheckingRecovery(false);
+        setError("");
+        return;
+      }
+
+      if (event === "SIGNED_IN" && session) {
+        setHasRecoverySession(true);
+        setCheckingRecovery(false);
+        return;
+      }
+
+      if (event === "SIGNED_OUT") {
+        setHasRecoverySession(false);
+      }
+    });
+
+    initRecoverySession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!hasRecoverySession) {
+      setError("Invalid or expired reset link");
+      return;
+    }
+
     if (!password || !confirm) {
       setError("Both fields are required.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirm) {
@@ -164,8 +255,20 @@ export default function NewPasswordPage() {
       return;
     }
 
+    setLoading(true);
     setError("");
-    // Placeholder: update password with backend.
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (updateError) {
+      setError("Unable to update password. Please try the reset link again.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
     router.push("/password-reset-success");
   };
 
@@ -189,7 +292,7 @@ export default function NewPasswordPage() {
             </h1>
             <p className="mt-3 max-w-[330px] text-left text-[12px] leading-[1.35] text-[#6B7281]">
               Set the new password for your account so you can login and access
-              all featuress.
+              all features.
             </p>
 
             <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -214,16 +317,21 @@ export default function NewPasswordPage() {
               {error ? (
                 <p className="text-left text-xs font-medium text-red-500">{error}</p>
               ) : null}
+              {!checkingRecovery && !hasRecoverySession && !error ? (
+                <p className="text-left text-xs font-medium text-red-500">
+                  Invalid or expired reset link
+                </p>
+              ) : null}
 
               <button
                 type="submit"
                 disabled={!canSubmit}
                 className={[
-                  "mt-1 inline-flex h-11 w-full items-center justify-center rounded-[11px] bg-emerald-900 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                  "mt-1 inline-flex h-11 w-full items-center justify-center rounded-[11px] bg-emerald-900 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed",
                   !canSubmit ? "opacity-70" : "",
                 ].join(" ")}
               >
-                Update Password
+                {loading ? "Updating..." : "Update Password"}
               </button>
             </form>
           </section>

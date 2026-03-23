@@ -97,9 +97,8 @@ export function ProfileForm({
       <div>
         <FieldLabel>Email</FieldLabel>
         <input
-          disabled={disabled}
+          disabled
           value={data.email ?? ""}
-          onChange={(e) => onChange({ email: e.target.value })}
           placeholder="Your Email"
           className={`${common} ${modeClass}`}
         />

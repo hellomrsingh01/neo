@@ -2,29 +2,40 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { SIT_CATEGORIES } from "@/lib/sitCategories";
+import { useEffect, useState } from "react";
 import { UserDropdown } from "@/components/dashboard/UserDropdown";
+import { supabase } from "@/lib/supabaseClient";
+import { usePathname, useRouter } from "next/navigation";
 
-type NavItem = {
-  id: "sit" | "work" | "meet" | "store" | "divide" | "connect";
-  label: string;
-  active?: boolean;
-  icon: string;
-  popup?: {
-    kind: "sit" | "placeholder";
-  };
+type HeaderUser = {
+  fullName: string;
+  email: string;
+  role: string | null;
 };
 
-// Header Nav Data
-const navItems: NavItem[] = [
-  { id: "sit", label: "Sit", icon: "/Sit.png", popup: { kind: "sit" } },
-  { id: "work", label: "Work", icon: "/Work.png", active: true, popup: { kind: "placeholder" } },
-  { id: "meet", label: "Meet", icon: "/Meet.png", popup: { kind: "placeholder" } },
-  { id: "store", label: "Store", icon: "/Store.png", popup: { kind: "placeholder" } },
-  { id: "divide", label: "Divide", icon: "/Divide.png", popup: { kind: "placeholder" } },
-  { id: "connect", label: "Connect", icon: "/Connect.png", popup: { kind: "placeholder" } },
-];
+type NavTabProps = {
+  label: string;
+  href: string;
+  isActive: boolean;
+};
+
+function NavTab({ label, href, isActive }: NavTabProps) {
+  return (
+    <Link
+      href={href}
+      className={[
+        "inline-flex h-8 items-center rounded-lg border px-3 text-[13px] font-medium transition-all duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25",
+        isActive
+          ? "border-emerald-900 bg-emerald-900 text-white shadow-sm"
+          : "border-gray-300/80 bg-gray-100 text-gray-700 hover:bg-gray-200",
+      ].join(" ")}
+      aria-current={isActive ? "page" : undefined}
+    >
+      {label}
+    </Link>
+  );
+}
 
 function HeaderIcon({
   name,
@@ -105,88 +116,58 @@ function HeaderIcon({
 }
 
 export default function Header() {
-  // Active Mega Menu State
-  const [activeMenu, setActiveMenu] = useState<NavItem["id"] | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ left: number; width: number } | null>(
-    null,
-  );
+  const [user, setUser] = useState<HeaderUser>({
+    fullName: "Your name",
+    email: "you@neooffice.com",
+    role: null,
+  });
 
-  const user = useMemo(
-    () => ({
-      fullName: "Sandra Johnson",
-      email: "sarah@neooffice.com",
-    }),
-    [],
-  );
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadHeaderUser = async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const authUser = authData?.user;
+        if (!authUser?.id || cancelled) return;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name, email, role")
+          .eq("id", authUser.id)
+          .maybeSingle<{ full_name: string | null; email: string | null; role: string | null }>();
+
+        if (cancelled) return;
+
+        setUser({
+          fullName: (profile?.full_name ?? "").trim() || "Your name",
+          email: profile?.email ?? authUser.email ?? "you@neooffice.com",
+          role: profile?.role ?? null,
+        });
+      } catch {
+        // Keep defaults on failure
+      }
+    };
+
+    loadHeaderUser();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const logout = async () => {
-    // Placeholder logout: replace with Supabase/Auth when wired
-    console.log("logout");
+    await supabase.auth.signOut();
+    router.replace("/");
   };
 
-  const navWrapRef = useRef<HTMLDivElement | null>(null);
-  const popupRef = useRef<HTMLDivElement | null>(null);
-  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-  const sitMenuItems = useMemo(
-    () =>
-      SIT_CATEGORIES.map((c) => ({
-        label: c.label,
-        // Header Category Navigation
-        href: `/dashboard/sit?category=${c.slug}`,
-        emphasis: c.slug === "office-task-chairs",
-      })),
-    [],
-  );
-
-  useEffect(() => {
-    if (!activeMenu) {
-      setMenuPosition(null);
-      return;
-    }
-
-    const updatePosition = () => {
-      const wrap = navWrapRef.current;
-      const btn = triggerRefs.current[activeMenu];
-      if (!wrap || !btn) return;
-
-      const wrapRect = wrap.getBoundingClientRect();
-      const btnRect = btn.getBoundingClientRect();
-      const left = Math.round(btnRect.left - wrapRect.left);
-      const width = Math.round(btnRect.width);
-      setMenuPosition({ left, width });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [activeMenu]);
-
-  useEffect(() => {
-    if (!activeMenu) return;
-
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as Node | null;
-      if (!target) return;
-
-      const wrap = navWrapRef.current;
-      const popup = popupRef.current;
-      if (wrap?.contains(target)) return;
-      if (popup?.contains(target)) return;
-      setActiveMenu(null);
-    };
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown, { passive: true });
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [activeMenu]);
+  const isDashboardActive = pathname === "/dashboard";
+  const isProductCatalogueActive = pathname.startsWith("/dashboard/product-catalogue");
+  const isProjectBoardActive =
+    pathname.startsWith("/dashboard/project-board") ||
+    pathname.startsWith("/dashboard/add-to-project");
 
   return (
     // Shared Dashboard Header
@@ -212,94 +193,20 @@ export default function Header() {
             </div>
           </div>
 
-          <div className="relative hidden md:block" ref={navWrapRef}>
+          <div className="relative hidden md:block">
             <nav className="flex items-center justify-center gap-2">
-              {navItems.map((item) => {
-                const isOpen = activeMenu === item.id;
-                // Nav Trigger Button
-                return (
-                  <button
-                    key={item.id}
-                    ref={(el) => {
-                      triggerRefs.current[item.id] = el;
-                    }}
-                    type="button"
-                    onClick={() => {
-                      if (!item.popup) return;
-                      setActiveMenu((prev) => (prev === item.id ? null : item.id));
-                    }}
-                    className={[
-                      "inline-flex h-8 items-center gap-1.5 rounded-[8px] border px-3 py-1 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25",
-                      isOpen
-                        ? "border-emerald-900 bg-emerald-900 text-white"
-                        : "border-gray-300/80 bg-white text-gray-700 hover:bg-gray-50",
-                      !isOpen && item.active ? "text-gray-900 bg-gray-100/70" : "",
-                    ].join(" ")}
-                    aria-haspopup={item.popup ? "dialog" : undefined}
-                    aria-expanded={isOpen}
-                  >
-                    <span
-                      className={[
-                        "inline-flex h-5 w-5 items-center justify-center rounded-md ring-1",
-                        isOpen
-                          ? "bg-white/15 ring-white/15"
-                          : "bg-emerald-900/10 ring-emerald-900/10",
-                      ].join(" ")}
-                    >
-                      <Image
-                        src={item.icon}
-                        alt=""
-                        width={14}
-                        height={14}
-                        className="h-[14px] w-[14px] object-contain"
-                      />
-                    </span>
-                    {item.label}
-                  </button>
-                );
-              })}
+              <NavTab label="Dashboard" href="/dashboard" isActive={isDashboardActive} />
+              <NavTab
+                label="Product Catalogue"
+                href="/dashboard/product-catalogue"
+                isActive={isProductCatalogueActive}
+              />
+              <NavTab
+                label="Project Board"
+                href="/dashboard/project-board"
+                isActive={isProjectBoardActive}
+              />
             </nav>
-
-            {/* Mega Menu Popup */}
-            {activeMenu && menuPosition ? (
-              <div
-                ref={popupRef}
-                role="dialog"
-                aria-label="Navigation menu"
-                className="absolute left-0 top-[calc(100%+10px)] z-50"
-                style={{
-                  transform: `translateX(${menuPosition.left}px)`,
-                }}
-              >
-                <div className="min-w-[520px] rounded-[16px] bg-white p-4 shadow-[0_18px_55px_rgba(0,0,0,0.16)] ring-1 ring-black/10">
-                  {activeMenu === "sit" ? (
-                    // Sit Menu Content
-                    <div className="grid grid-cols-3 gap-x-10 gap-y-2.5">
-                      {sitMenuItems.map((m) => (
-                        <Link
-                          key={m.label}
-                          href={m.href}
-                          onClick={() => setActiveMenu(null)}
-                          className={[
-                            "text-left text-[12px] font-medium transition-colors",
-                            m.emphasis
-                              ? "text-emerald-950"
-                              : "text-gray-500 hover:text-gray-700",
-                          ].join(" ")}
-                        >
-                          {m.label}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : (
-                    // Placeholder Menu Content
-                    <div className="py-6 text-center text-xs font-semibold text-gray-400">
-                      Coming soon
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="flex flex-1 items-center justify-end gap-2.5">

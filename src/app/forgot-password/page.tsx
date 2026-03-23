@@ -1,25 +1,47 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleContinue = (e: React.FormEvent) => {
+  const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
-    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const trimmedEmail = email.trim();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
 
     if (!isValidEmail) {
       setError("Enter a valid email address.");
+      setSuccessMessage("");
       return;
     }
 
+    setLoading(true);
     setError("");
-    router.push("/verification");
+    setSuccessMessage("");
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      trimmedEmail,
+      {
+        redirectTo: "http://localhost:3000/new-password",
+      }
+    );
+
+    if (resetError) {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    setSuccessMessage(
+      "If an account exists for this email, a password reset link has been sent."
+    );
+    setLoading(false);
   };
 
   return (
@@ -43,8 +65,7 @@ export default function ForgotPasswordPage() {
               Forgot password
             </h1>
             <p className="mt-3 max-w-[320px] text-left text-[12px] leading-[1.35] text-[#6B7281]">
-              Enter your email for the verification process,we will send 4
-              digits code to your email.
+              Enter your email to receive a password reset link.
             </p>
 
             <form className="mt-6" onSubmit={handleContinue}>
@@ -85,8 +106,9 @@ export default function ForgotPasswordPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@neoffice.com"
+                  placeholder="you@neooffice.com"
                   className="block h-11 w-full rounded-[11px] border border-gray-200 bg-[#F5F5F5] px-10 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/60 focus:border-emerald-500/60"
+                  disabled={loading}
                 />
               </div>
               {error ? (
@@ -94,12 +116,18 @@ export default function ForgotPasswordPage() {
                   {error}
                 </p>
               ) : null}
+              {successMessage ? (
+                <p className="mt-2 text-left text-xs font-medium text-emerald-700">
+                  {successMessage}
+                </p>
+              ) : null}
 
               <button
                 type="submit"
-                className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-[11px] bg-emerald-900 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                disabled={loading}
+                className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-[11px] bg-emerald-900 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Continue
+                {loading ? "Sending..." : "Continue"}
               </button>
             </form>
           </section>

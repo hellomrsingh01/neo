@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -26,11 +29,12 @@ type Product = {
 };
 
 const categories: Category[] = [
-  { id: "chairs", label: "Chair" },
-  { id: "desk", label: "Desk" },
-  { id: "table", label: "Table" },
-  { id: "stool", label: "Stool" },
-  { id: "storage", label: "Storage" },
+  { id: "sit", label: "Sit" },
+  { id: "work", label: "Work" },
+  { id: "meet", label: "Meet" },
+  { id: "store", label: "Store" },
+  { id: "divide", label: "Divide" },
+  { id: "connect", label: "Connect" },
 ];
 
 const suppliers: Supplier[] = [
@@ -273,6 +277,25 @@ function Icon({
 export default function ProductCataloguePage() {
   const totalProducts = 3;
   const availableProducts = products.length;
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const toggleSelection = (
+    value: string,
+    selectedValues: string[],
+    setSelectedValues: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+    setSelectedValues((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
+    );
+  };
+
+  const handleClearFilters = () => {
+    setSelectedCategories([]);
+    setSelectedSuppliers([]);
+    setSelectedTags([]);
+  };
 
   return (
     <>
@@ -336,6 +359,10 @@ export default function ProductCataloguePage() {
                     >
                       <input
                         type="checkbox"
+                        checked={selectedCategories.includes(c.id)}
+                        onChange={() =>
+                          toggleSelection(c.id, selectedCategories, setSelectedCategories)
+                        }
                         className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
                       />
                       <span>{c.label}</span>
@@ -356,6 +383,10 @@ export default function ProductCataloguePage() {
                     >
                       <input
                         type="checkbox"
+                        checked={selectedSuppliers.includes(s.id)}
+                        onChange={() =>
+                          toggleSelection(s.id, selectedSuppliers, setSelectedSuppliers)
+                        }
                         className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
                       />
                       <span>{s.label}</span>
@@ -376,6 +407,8 @@ export default function ProductCataloguePage() {
                     >
                       <input
                         type="checkbox"
+                        checked={selectedTags.includes(t.id)}
+                        onChange={() => toggleSelection(t.id, selectedTags, setSelectedTags)}
                         className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
                       />
                       <span>{t.label}</span>
@@ -386,6 +419,7 @@ export default function ProductCataloguePage() {
 
               <button
                 type="button"
+                onClick={handleClearFilters}
                 className="mt-1 inline-flex w-full items-center justify-center rounded-full bg-emerald-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40"
               >
                 Clear All Filters

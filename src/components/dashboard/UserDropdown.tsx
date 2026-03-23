@@ -7,7 +7,18 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 export type UserDropdownUser = {
   fullName: string;
   email: string;
+  role: string | null;
 };
+
+function getInitials(fullName: string): string {
+  const parts = fullName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+}
 
 export function UserDropdown({
   user,
@@ -21,8 +32,8 @@ export function UserDropdown({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const items = useMemo(
-    () => [
+  const items = useMemo(() => {
+    const baseItems = [
       {
         key: "profile",
         label: "Profile Settings",
@@ -30,13 +41,22 @@ export function UserDropdown({
         onSelect: () => router.push("/profile"),
         danger: false,
       },
-      {
-        key: "users",
-        label: "Users",
-        icon: Users,
-        onSelect: () => router.push("/users"),
-        danger: false,
-      },
+    ];
+
+    const adminItems =
+      user.role === "admin"
+        ? [
+            {
+              key: "users",
+              label: "Users",
+              icon: Users,
+              onSelect: () => router.push("/users"),
+              danger: false,
+            },
+          ]
+        : [];
+
+    const logoutItem = [
       {
         key: "logout",
         label: "Sign out",
@@ -46,9 +66,10 @@ export function UserDropdown({
         },
         danger: true,
       },
-    ],
-    [onLogout, router],
-  );
+    ];
+
+    return [...baseItems, ...adminItems, ...logoutItem];
+  }, [onLogout, router, user.role]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,10 +109,12 @@ export function UserDropdown({
         </span>
 
         <span className="flex items-center gap-1.5">
-          <span
-            className="h-8 w-8 rounded-full bg-emerald-900 ring-1 ring-black/10"
-            aria-hidden="true"
-          />
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-900 ring-1 ring-black/10 text-[11px] font-semibold text-white"
+          aria-hidden="true"
+        >
+          {getInitials(user.fullName)}
+        </span>
           <svg
             aria-hidden="true"
             viewBox="0 0 20 20"

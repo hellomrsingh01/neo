@@ -11,6 +11,14 @@ export type TableUser = {
   avatar?: string | null;
 };
 
+function formatRole(role: string) {
+  const normalized = role.trim().toLowerCase();
+  if (normalized === "admin") return "Admin";
+  if (normalized === "internal") return "Internal";
+  if (normalized === "external") return "External";
+  return role;
+}
+
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const first = parts[0]?.[0] ?? "?";
@@ -63,7 +71,7 @@ export function UserRow({
         {user.email}
       </td>
       <td className="py-3.5 pr-4 text-sm font-medium text-gray-700">
-        {user.role}
+        {formatRole(user.role)}
       </td>
       <td className="py-3.5 pr-6 text-right">
         <div className="flex items-center justify-end gap-2">

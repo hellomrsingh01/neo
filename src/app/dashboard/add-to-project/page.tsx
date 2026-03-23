@@ -10,6 +10,7 @@ type SummaryCard =
 
 type Room = {
   id: string;
+  instanceId?: string;
   name: string;
   itemsCount: number;
   active?: boolean;
@@ -234,7 +235,7 @@ const summaryCards: SummaryCard[] = [
   { key: "status", label: "Status", value: "All changes saved", tone: "success" },
 ];
 
-const initialRooms: Room[] = [
+const availableRooms: Room[] = [
   { id: "meeting-room", name: "Meeting Room", itemsCount: 12, active: true },
   { id: "workspace-area", name: "Workspace Area", itemsCount: 8 },
   { id: "reception", name: "Reception", itemsCount: 6 },
@@ -308,10 +309,16 @@ const items: ProjectItem[] = [
 
 export default function AddToProjectPage() {
   const totalUnits = 28;
+  const [projectName, setProjectName] = useState("");
   const [isAddRoomOpen, setIsAddRoomOpen] = useState(false);
-  const [rooms, setRooms] = useState<Room[]>(() => initialRooms);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
-  const addRoomOptions = useMemo(() => initialRooms, []);
+  const addRoomOptions = useMemo(() => availableRooms, []);
+  const visibleItems = selectedRoom
+    ? items.filter((item) => item.roomId === selectedRoom.id)
+    : items;
+  const visibleTotalUnits = visibleItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <main className="mt-6 w-full">
@@ -319,9 +326,16 @@ export default function AddToProjectPage() {
       <section>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-[34px]">
-              Add to Project <span className="font-medium">+</span>
-            </h1>
+            <div className="inline-flex items-center gap-2">
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Project Name"
+                aria-label="Project name"
+                className="h-auto min-w-[220px] bg-transparent p-0 text-3xl font-semibold tracking-tight text-white placeholder:text-white/75 focus-visible:outline-none focus-visible:ring-0 sm:min-w-[300px] sm:text-[34px]"
+              />
+            </div>
             <p className="mt-1 text-sm font-semibold text-emerald-100/75">
               Section 1 • 4 items • 28 units
             </p>
@@ -350,12 +364,13 @@ export default function AddToProjectPage() {
 
             <button
               type="button"
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-emerald-950 shadow-sm ring-1 ring-black/10 transition-colors hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/35"
+              onClick={() => console.log("Saved")}
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-emerald-900 px-4 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
             >
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-900/10 text-emerald-900">
-                <Icon name="plus" className="h-4 w-4" />
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15">
+                <Icon name="check" className="h-4 w-4 text-white" />
               </span>
-              Add Products
+              Save
             </button>
           </div>
         </div>
@@ -391,9 +406,9 @@ export default function AddToProjectPage() {
         })}
       </section>
 
-      <section className="mt-6 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[260px_1fr]">
+      <section className="mt-6 grid grid-cols-1 items-stretch gap-6 lg:h-[560px] lg:grid-cols-[260px_1fr]">
         {/* Rooms Sections Panel */}
-        <aside className="flex h-full flex-col rounded-[18px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
+        <aside className="flex h-[560px] min-h-0 flex-col overflow-hidden rounded-[18px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
           {/* Rooms Sections Header */}
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-emerald-950">
@@ -419,7 +434,7 @@ export default function AddToProjectPage() {
             {isAddRoomOpen ? (
               <div
                 role="menu"
-                className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[14px] bg-white shadow-[0_18px_50px_rgba(0,0,0,0.14)] ring-1 ring-gray-200/80"
+                className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[14px] bg-white shadow-[0_18px_50px_rgba(0,0,0,0.14)] ring-1 ring-gray-200/80 transition-all duration-200"
               >
                 {addRoomOptions.map((opt) => (
                   <button
@@ -427,10 +442,12 @@ export default function AddToProjectPage() {
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      setRooms((prev) => {
-                        if (prev.some((r) => r.id === opt.id)) return prev;
-                        return [...prev, { ...opt, active: false }];
-                      });
+                      const roomInstance: Room = {
+                        ...opt,
+                        instanceId: `${opt.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                        active: false,
+                      };
+                      setRooms((prev) => [...prev, roomInstance]);
                       setIsAddRoomOpen(false);
                     }}
                     className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -444,13 +461,24 @@ export default function AddToProjectPage() {
           </div>
 
           {/* Room List Items */}
-          <div className="mt-4 flex-1 space-y-2">
-            {rooms.map((room) => {
-              const active = Boolean(room.active);
+          <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+            <div className="h-full space-y-2 overflow-y-auto pr-1">
+              {rooms.length === 0 ? (
+                <div className="rounded-[12px] border border-dashed border-gray-200 px-3 py-5 text-center text-xs font-semibold text-gray-400">
+                  No rooms added yet
+                </div>
+              ) : null}
+              {rooms.map((room, idx) => {
+              const active = selectedRoom
+                ? selectedRoom.instanceId
+                  ? selectedRoom.instanceId === room.instanceId
+                  : selectedRoom.id === room.id
+                : Boolean(room.active);
               return (
                 <button
-                  key={room.id}
+                  key={room.instanceId ?? `${room.id}-${idx}`}
                   type="button"
+                  onClick={() => setSelectedRoom(room)}
                   className={[
                     "flex w-full items-center gap-3 rounded-[14px] px-3 py-3 text-left ring-1 transition-colors",
                     active
@@ -484,39 +512,70 @@ export default function AddToProjectPage() {
                   </span>
                 </button>
               );
-            })}
+              })}
+            </div>
           </div>
 
           <div className="mt-4" />
         </aside>
 
         {/* Project Items Panel */}
-        <section className="h-full rounded-[22px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-base font-semibold text-emerald-950">
-              Project Items
-            </h2>
+        <section className="flex h-[560px] min-h-0 flex-col overflow-hidden rounded-[22px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5 sm:p-5">
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {selectedRoom ? (
+              <>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRoom(null)}
+                    className="inline-flex items-center gap-2 text-left text-base font-semibold text-emerald-950 transition-opacity hover:opacity-80"
+                    aria-label="Back to project"
+                  >
+                    <span aria-hidden="true" className="text-lg leading-none">
+                      ←
+                    </span>
+                    <span>{selectedRoom.name}</span>
+                  </button>
+                  <p className="mt-1 text-xs font-semibold text-gray-500">
+                    {visibleItems.length} items in this room
+                  </p>
+                </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-gray-100 px-4 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
-              >
-                All Rooms
-                <Icon name="chevronDown" className="h-4 w-4" />
-              </button>
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center gap-2 rounded-full bg-emerald-900 px-4 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-800"
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15">
+                    <Icon name="plus" className="h-4 w-4 text-white" />
+                  </span>
+                  Add Product
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-base font-semibold text-emerald-950">Project Items</h2>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center gap-2 rounded-full bg-gray-100 px-4 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+                  >
+                    All Rooms
+                    <Icon name="chevronDown" className="h-4 w-4" />
+                  </button>
 
-              <button
-                type="button"
-                aria-label="Add item"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-900 text-white shadow-sm ring-1 ring-emerald-900/10 hover:bg-emerald-800"
-              >
-                <Icon name="plus" className="h-5 w-5" />
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    aria-label="Add item"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-900 text-white shadow-sm ring-1 ring-emerald-900/10 hover:bg-emerald-800"
+                  >
+                    <Icon name="plus" className="h-5 w-5" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-[16px] ring-1 ring-gray-200/80">
+          <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[16px] ring-1 ring-gray-200/80">
             <div className="grid grid-cols-[1.5fr_.9fr_.9fr_.7fr] gap-4 bg-[#f4f7f6] px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <div>Product</div>
               <div>Manufacturer</div>
@@ -524,8 +583,8 @@ export default function AddToProjectPage() {
               <div className="text-right">Quantity</div>
             </div>
 
-            <div className="divide-y divide-gray-100 bg-white">
-              {items.map((item) => {
+            <div className="h-[calc(100%-44px)] overflow-y-auto divide-y divide-gray-100 bg-white">
+              {visibleItems.map((item) => {
                 const room = rooms.find((r) => r.id === item.roomId);
                 const badgeTone = badgeToneByRoomId[item.roomId];
 
@@ -599,13 +658,16 @@ export default function AddToProjectPage() {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-col gap-2 text-xs font-semibold text-gray-500 sm:flex-row sm:items-center sm:justify-between">
-            <div>Showing 4 of 4 items</div>
-            <div>Total Units: {totalUnits}</div>
+          <div className="mt-3 flex shrink-0 flex-col gap-2 text-xs font-semibold text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              Showing {visibleItems.length} of {visibleItems.length} items
+            </div>
+            <div>Total Units: {selectedRoom ? visibleTotalUnits : totalUnits}</div>
           </div>
         </section>
       </section>
     </main>
   );
 }
+
 

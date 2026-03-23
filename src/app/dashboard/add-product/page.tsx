@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 type TabKey = "details" | "pricing" | "media" | "settings";
 
@@ -10,31 +11,76 @@ type Option = {
   label: string;
 };
 
-const subCategories: Option[] = [
-  { id: "outdoor-seating", label: "Outdoor Seating" },
-  { id: "office-task-chairs", label: "Office / Task Chairs" },
-  { id: "meeting-room", label: "Meeting Room" },
-];
-
-const manufacturers: Option[] = [
-  { id: "steelcase", label: "Steelcase" },
-  { id: "orangebox", label: "Orangebox" },
-  { id: "hni", label: "HNI" },
-];
-
-const categories: Option[] = [
-  { id: "seating", label: "Seating" },
-  { id: "desks", label: "Desks" },
-  { id: "tables", label: "Tables" },
-];
-
-const tags = ["Ergonomic", "Office Chair", "Premium"];
-
 const uploadedImages = [
   { id: "img-1", isPrimary: true },
   { id: "img-2", isPrimary: false },
   { id: "img-3", isPrimary: false },
 ];
+
+const mapRowToOption = (row: { id: string | number; name?: string; label?: string }): Option => ({
+  id: String(row.id),
+  label: String(row.name ?? row.label ?? ""),
+});
+
+async function fetchCategoriesData(): Promise<Option[]> {
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching categories:", error);
+    return [];
+  }
+
+  return (data ?? []).map(mapRowToOption);
+}
+
+async function fetchManufacturersData(): Promise<Option[]> {
+  const { data, error } = await supabase
+    .from("manufacturers")
+    .select("id, name")
+    .eq("is_archived", false)
+    .order("order_index", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching manufacturers:", error);
+    return [];
+  }
+
+  return (data ?? []).map(mapRowToOption);
+}
+
+async function fetchTagsData(): Promise<Option[]> {
+  const { data, error } = await supabase
+    .from("tags")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching tags:", error);
+    return [];
+  }
+
+  return (data ?? []).map(mapRowToOption);
+}
+
+async function fetchSubcategoriesData(categoryId: string): Promise<Option[]> {
+  const { data, error } = await supabase
+    .from("subcategories")
+    .select("id, name")
+    .eq("category_id", categoryId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching subcategories:", error);
+    return [];
+  }
+
+  return (data ?? []).map(mapRowToOption);
+}
 
 function Icon({
   name,
@@ -161,6 +207,14 @@ export default function AddProductPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [description, setDescription] = useState("");
+  const [categories, setCategories] = useState<Option[]>([]);
+  const [subcategories, setSubcategories] = useState<Option[]>([]);
+  const [manufacturers, setManufacturers] = useState<Option[]>([]);
+  const [tags, setTags] = useState<Option[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedSubcategory, setSelectedSubcategory] = useState("");
+  const [selectedManufacturer, setSelectedManufacturer] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const tabs = useMemo(
     () =>
@@ -172,6 +226,51 @@ export default function AddProductPage() {
       ] satisfies Array<{ key: TabKey; label: string }>,
     [],
   );
+
+  useEffect(() => {
+    const loadInitialData = async () => {
+      const [categoryData, manufacturerData, tagData] = await Promise.all([
+        fetchCategoriesData(),
+        fetchManufacturersData(),
+        fetchTagsData(),
+      ]);
+
+      setCategories(categoryData);
+      setManufacturers(manufacturerData);
+      setTags(tagData);
+    };
+
+    void loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    const loadSubcategories = async () => {
+      if (!selectedCategory) {
+        setSubcategories([]);
+        return;
+      }
+
+      const data = await fetchSubcategoriesData(selectedCategory);
+      setSubcategories(data);
+    };
+
+    void loadSubcategories();
+  }, [selectedCategory]);
+
+  const handleCategoryChange = (value: string) => {
+    setSelectedCategory(value);
+    setSelectedSubcategory("");
+  };
+
+  const handleTagToggle = (tagId: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tagId)
+        ? prev.filter((id) => id !== tagId)
+        : [...prev, tagId],
+    );
+  };
+
+  const subcategoryDisabled = !selectedCategory || subcategories.length === 0;
 
   return (
     <>
@@ -210,7 +309,7 @@ export default function AddProductPage() {
               type="button"
               className="inline-flex h-9 items-center justify-center rounded-full bg-emerald-900 px-4 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 hover:bg-emerald-800"
             >
-              Save Changes
+              Save
             </button>
           </div>
         </div>
@@ -252,12 +351,43 @@ export default function AddProductPage() {
                     />
                   </div>
 
+
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-semibold text-gray-600">
+                      Category
+                    </label>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="block text-[11px] font-semibold text-gray-600">
                       Sub Category
                     </label>
-                    <select className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35">
-                      {subCategories.map((o) => (
+                    <select
+                      value={selectedSubcategory}
+                      onChange={(e) => setSelectedSubcategory(e.target.value)}
+                      disabled={subcategoryDisabled}
+                      className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+                    >
+                      <option value="">
+                        {selectedCategory
+                          ? subcategories.length
+                            ? "Select Sub Category"
+                            : "No subcategories found"
+                          : "Select Category first"}
+                      </option>
+                      {subcategories.map((o) => (
                         <option key={o.id} value={o.id}>
                           {o.label}
                         </option>
@@ -269,7 +399,11 @@ export default function AddProductPage() {
                     <label className="block text-[11px] font-semibold text-gray-600">
                       Enter New Manufacturers
                     </label>
-                    <select className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35">
+                    <select
+                      value={selectedManufacturer}
+                      onChange={(e) => setSelectedManufacturer(e.target.value)}
+                      className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+                    >
                       <option value="">Select</option>
                       {manufacturers.map((o) => (
                         <option key={o.id} value={o.id}>
@@ -283,7 +417,12 @@ export default function AddProductPage() {
                     <label className="block text-[11px] font-semibold text-gray-600">
                       Manufacturer
                     </label>
-                    <select className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35">
+                    <select
+                      value={selectedManufacturer}
+                      onChange={(e) => setSelectedManufacturer(e.target.value)}
+                      className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+                    >
+                      <option value="">Select Manufacturer</option>
                       {manufacturers.map((o) => (
                         <option key={o.id} value={o.id}>
                           {o.label}
@@ -292,18 +431,7 @@ export default function AddProductPage() {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-[11px] font-semibold text-gray-600">
-                      Category
-                    </label>
-                    <select className="h-10 w-full rounded-[12px] bg-gray-100 px-3.5 text-sm text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35">
-                      {categories.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  
 
                   <div className="space-y-2">
                     <label className="block text-[11px] font-semibold text-gray-600">
@@ -342,21 +470,20 @@ export default function AddProductPage() {
 
               <section className="border-t border-gray-100 pt-5">
                 <h2 className="text-sm font-semibold text-emerald-950">Tags</h2>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {tags.map((t) => (
-                    <span
-                      key={t}
-                      className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-900 ring-1 ring-emerald-900/10"
+                <div className="mt-3 flex flex-wrap gap-4">
+                  {tags.map((tag) => (
+                    <label
+                      key={tag.id}
+                      className="inline-flex items-center gap-2 text-[11px] font-semibold text-emerald-900"
                     >
-                      {t}
-                      <button
-                        type="button"
-                        className="text-emerald-900/55 hover:text-emerald-900"
-                        aria-label={`Remove ${t}`}
-                      >
-                        ×
-                      </button>
-                    </span>
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(tag.id)}
+                        onChange={() => handleTagToggle(tag.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-900 focus:ring-emerald-600/35"
+                      />
+                      {tag.label}
+                    </label>
                   ))}
                 </div>
               </section>
