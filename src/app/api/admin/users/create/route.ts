@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
 
 type CreateBody = {
   email?: string;
@@ -10,6 +11,17 @@ type CreateBody = {
 };
 
 const ALLOWED_ROLES = new Set(["admin", "internal", "external"]);
+
+const getSupabaseAdmin = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Server configuration error: missing Supabase admin credentials");
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+};
 
 export async function POST(req: Request) {
   try {
@@ -42,6 +54,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const requesterId = authData.user.id;
     const { data: requesterProfile, error: requesterError } = await supabaseAdmin
       .from("profiles")

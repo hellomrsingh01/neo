@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
 
 type ProfileListRow = {
   id: string;
@@ -8,6 +9,17 @@ type ProfileListRow = {
   email: string | null;
   role: string | null;
   is_active: boolean | null;
+};
+
+const getSupabaseAdmin = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Server configuration error: missing Supabase admin credentials");
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 };
 
 export async function GET(req: Request) {
@@ -28,6 +40,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const requesterId = authData.user.id;
     const { data: requesterProfile, error: requesterError } = await supabaseAdmin
       .from("profiles")

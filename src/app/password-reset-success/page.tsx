@@ -41,6 +41,7 @@ export default function PasswordResetSuccessPage() {
             width={250}
             height={58}
             priority
+            unoptimized
             className="mx-auto h-auto w-[220px] object-contain sm:w-[250px]"
           />
           <p className="mt-1 text-sm font-medium text-emerald-50">Product Catalogue</p>

@@ -25,11 +25,12 @@ export default function ForgotPasswordPage() {
     setError("");
     setSuccessMessage("");
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       trimmedEmail,
       {
-        redirectTo: "http://localhost:3000/new-password",
-      }
+        redirectTo: `${siteUrl}/new-password`,
+      },
     );
 
     if (resetError) {
@@ -39,7 +40,7 @@ export default function ForgotPasswordPage() {
     }
 
     setSuccessMessage(
-      "If an account exists for this email, a password reset link has been sent."
+      "If an account exists for this email, a password reset link has been sent.",
     );
     setLoading(false);
   };
@@ -54,6 +55,7 @@ export default function ForgotPasswordPage() {
             width={250}
             height={58}
             priority
+            unoptimized
             className="mx-auto h-auto w-[220px] object-contain sm:w-[250px]"
           />
           <p className="mt-1 text-sm font-medium text-emerald-50">
@@ -140,4 +142,3 @@ export default function ForgotPasswordPage() {
     </div>
   );
 }
-

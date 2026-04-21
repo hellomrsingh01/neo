@@ -258,6 +258,7 @@ const HomePage: React.FC = () => {
                 width={260}
                 height={60}
                 priority
+                unoptimized
                 className="h-auto w-[260px] object-contain"
               />
             </div>

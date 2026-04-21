@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { isCommonPassword } from "@/lib/common-passwords"
 
 function IconLock({ className }: { className?: string }) {
   return (
@@ -155,6 +156,27 @@ export default function NewPasswordPage() {
   const [checkingRecovery, setCheckingRecovery] = useState(true);
   const [hasRecoverySession, setHasRecoverySession] = useState(false);
 
+  const passwordChecks = useMemo(
+    () => ({
+      minLength: password.length >= 12,
+      hasUppercase: /[A-Z]/.test(password),
+      hasLowercase: /[a-z]/.test(password),
+      hasNumber: /\d/.test(password),
+      hasSpecial: /[^A-Za-z0-9]/.test(password),
+    }),
+    [password]
+  );
+
+  const missingRequirements = useMemo(() => {
+    const missing: string[] = [];
+    if (!passwordChecks.minLength) missing.push("At least 12 characters");
+    if (!passwordChecks.hasUppercase) missing.push("At least one uppercase letter");
+    if (!passwordChecks.hasLowercase) missing.push("At least one lowercase letter");
+    if (!passwordChecks.hasNumber) missing.push("At least one number");
+    if (!passwordChecks.hasSpecial) missing.push("At least one special character");
+    return missing;
+  }, [passwordChecks]);
+
   const canSubmit = useMemo(
     () =>
       password.length > 0 &&
@@ -246,12 +268,17 @@ export default function NewPasswordPage() {
       setError("Both fields are required.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (missingRequirements.length > 0) {
+      setError("Password does not meet the required policy.");
       return;
     }
     if (password !== confirm) {
       setError("Passwords do not match.");
+      return;
+    }
+
+    if (isCommonPassword(password)) {
+      setError("This password is too common. Please choose a more unique password.");
       return;
     }
 
@@ -282,6 +309,7 @@ export default function NewPasswordPage() {
             width={250}
             height={58}
             priority
+            unoptimized
             className="mx-auto h-auto w-[220px] object-contain sm:w-[250px]"
           />
           <p className="mt-1 text-sm font-medium text-emerald-50">Product Catalogue</p>
@@ -304,6 +332,35 @@ export default function NewPasswordPage() {
                 onToggleShow={() => setShowPassword((v) => !v)}
                 placeholder="Enter your password"
               />
+              {password.length > 0 ? (
+                <div className="space-y-1">
+                  {!passwordChecks.minLength ? (
+                    <p className="text-left text-xs font-medium text-red-500">
+                      At least 12 characters
+                    </p>
+                  ) : null}
+                  {!passwordChecks.hasUppercase ? (
+                    <p className="text-left text-xs font-medium text-red-500">
+                      At least one uppercase letter
+                    </p>
+                  ) : null}
+                  {!passwordChecks.hasLowercase ? (
+                    <p className="text-left text-xs font-medium text-red-500">
+                      At least one lowercase letter
+                    </p>
+                  ) : null}
+                  {!passwordChecks.hasNumber ? (
+                    <p className="text-left text-xs font-medium text-red-500">
+                      At least one number
+                    </p>
+                  ) : null}
+                  {!passwordChecks.hasSpecial ? (
+                    <p className="text-left text-xs font-medium text-red-500">
+                      At least one special character
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               <PasswordField
                 label="Confirm password"

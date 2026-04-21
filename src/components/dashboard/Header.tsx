@@ -17,14 +17,27 @@ type NavTabProps = {
   label: string;
   href: string;
   isActive: boolean;
+  iconSrc?: string;
 };
 
-function NavTab({ label, href, isActive }: NavTabProps) {
+function NavTab({ label, href, isActive, iconSrc }: NavTabProps) {
+  const isDashboardIcon = iconSrc === "/dashboard.svg";
+  const navIconFilterClass = iconSrc
+    ? isActive
+      ? // Dark-green assets → white on emerald bar; white dashboard asset stays white
+        "brightness-0 invert"
+      : isDashboardIcon
+        ? // White house icon → dark glyph on light gray tabs
+          "brightness-0"
+        : // catalogue / project board:already #02341E on gray
+          ""
+    : "";
+
   return (
     <Link
       href={href}
       className={[
-        "inline-flex h-8 items-center rounded-lg border px-3 text-[13px] font-medium transition-all duration-200",
+        "inline-flex h-8 items-center justify-center rounded-lg border px-3 text-[13px] font-medium transition-all duration-200",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25",
         isActive
           ? "border-emerald-900 bg-emerald-900 text-white shadow-sm"
@@ -32,7 +45,27 @@ function NavTab({ label, href, isActive }: NavTabProps) {
       ].join(" ")}
       aria-current={isActive ? "page" : undefined}
     >
-      {label}
+      {iconSrc ? (
+        <span className="inline-flex items-center gap-1.5">
+          <Image
+            src={iconSrc}
+            alt=""
+            width={18}
+            height={18}
+            unoptimized
+            className={[
+              "h-[15px] w-[15px] shrink-0 object-contain transition-[filter]",
+              navIconFilterClass,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            aria-hidden
+          />
+          <span>{label}</span>
+        </span>
+      ) : (
+        label
+      )}
     </Link>
   );
 }
@@ -121,6 +154,7 @@ export default function Header() {
     email: "you@neooffice.com",
     role: null,
   });
+  const [headerSearch, setHeaderSearch] = useState("");
 
   const router = useRouter();
   const pathname = usePathname();
@@ -138,7 +172,11 @@ export default function Header() {
           .from("profiles")
           .select("full_name, email, role")
           .eq("id", authUser.id)
-          .maybeSingle<{ full_name: string | null; email: string | null; role: string | null }>();
+          .maybeSingle<{
+            full_name: string | null;
+            email: string | null;
+            role: string | null;
+          }>();
 
         if (cancelled) return;
 
@@ -164,48 +202,89 @@ export default function Header() {
   };
 
   const isDashboardActive = pathname === "/dashboard";
-  const isProductCatalogueActive = pathname.startsWith("/dashboard/product-catalogue");
+  const isProductCatalogueActive = pathname.startsWith(
+    "/dashboard/product-catalogue",
+  );
   const isProjectBoardActive =
-    pathname.startsWith("/dashboard/project-board") ||
-    pathname.startsWith("/dashboard/add-to-project");
+    pathname.startsWith("/dashboard/project-board");
+  const isAdminCategoriesActive = pathname.startsWith("/admin/categories");
+  const isExternalBoardsActive = pathname.startsWith(
+    "/dashboard/external-boards",
+  );
+  const isAdminManufacturersActive = pathname.startsWith(
+    "/admin/manufacturers",
+  );
+  const isAdminProductsActive = pathname.startsWith("/admin/products");
 
   return (
     // Shared Dashboard Header
-    <header className="w-full bg-[#F3F4F4] text-gray-900 border-b border-black/10">
+    <header className="sticky top-0 z-50 w-full bg-[#F3F4F4] text-gray-900 border-b border-black/10">
       <div className="w-full px-4 sm:px-6">
         <div className="flex items-center justify-between gap-4 py-2.5">
           <div className="flex items-center gap-3">
-            <div className="flex items-center">
-              <Link
-                href="/dashboard"
-                className="cursor-pointer transition-opacity hover:opacity-90"
-                aria-label="Go to dashboard"
-              >
-                <Image
-                  src="/logo2.png"
-                  alt="Neo Office"
-                  width={145}
-                  height={40}
-                  priority
-                  className="h-[22px] w-auto object-contain"
-                />
-              </Link>
-            </div>
+            <Link
+              href="/dashboard"
+              className="cursor-pointer transition-opacity hover:opacity-90"
+              aria-label="Go to dashboard"
+            >
+              <Image
+                src="/logo.svg"
+                alt="Neo Office"
+                width={145}
+                height={40}
+                priority
+                unoptimized
+                className="h-[22px] w-auto object-contain"
+              />
+            </Link>
           </div>
 
           <div className="relative hidden md:block">
             <nav className="flex items-center justify-center gap-2">
-              <NavTab label="Dashboard" href="/dashboard" isActive={isDashboardActive} />
+              <NavTab
+                label="Dashboard"
+                href="/dashboard"
+                isActive={isDashboardActive}
+                iconSrc="/dashboard.svg"
+              />
               <NavTab
                 label="Product Catalogue"
                 href="/dashboard/product-catalogue"
                 isActive={isProductCatalogueActive}
+                iconSrc="/catalogue.svg"
               />
               <NavTab
                 label="Project Board"
                 href="/dashboard/project-board"
                 isActive={isProjectBoardActive}
+                iconSrc="/Project Board.svg"
               />
+              {user.role === "admin" || user.role === "internal" ? (
+                <NavTab
+                  label="External Boards"
+                  href="/dashboard/external-boards"
+                  isActive={isExternalBoardsActive}
+                />
+              ) : null}
+              {user.role === "admin" ? (
+                <>
+                  <NavTab
+                    label="Categories"
+                    href="/admin/categories"
+                    isActive={isAdminCategoriesActive}
+                  />
+                  <NavTab
+                    label="Manufacturers"
+                    href="/admin/manufacturers"
+                    isActive={isAdminManufacturersActive}
+                  />
+                  <NavTab
+                    label="Products"
+                    href="/admin/products"
+                    isActive={isAdminProductsActive}
+                  />
+                </>
+              ) : null}
             </nav>
           </div>
 
@@ -217,6 +296,17 @@ export default function Header() {
               <input
                 type="search"
                 placeholder="Search products..."
+                value={headerSearch}
+                onChange={(event) => setHeaderSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  const term = headerSearch.trim();
+                  const destination = term
+                    ? `/dashboard/product-catalogue?search=${encodeURIComponent(term)}`
+                    : "/dashboard/product-catalogue";
+                  router.push(destination);
+                }}
                 className="h-8.5 w-full rounded-full bg-white pl-9 pr-3 text-xs font-medium text-gray-900 placeholder:text-gray-400/90 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/25"
               />
             </div>
@@ -249,4 +339,3 @@ export default function Header() {
     </header>
   );
 }
-
