@@ -11,6 +11,7 @@ type Item = {
   section_id: string;
   quantity: number;
   client_notes: string | null;
+  supplier_notes: string | null;
   sort_order: number | null;
   product: Product | null;
 };
@@ -27,7 +28,9 @@ type ProjectDetail = {
   id: string;
   name: string;
   client_name: string | null;
+  internal_reference: string | null;
   project_notes: string | null;
+  project_type: "internal" | "external" | null;
   sections: Section[];
 };
 
@@ -58,21 +61,54 @@ export default function ExternalBoardDetailPage() {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const currentUser = authData.user;
+    if (authError || !currentUser) {
+      router.push("/");
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", currentUser.id)
+      .single<{ role: "admin" | "internal" | "external" }>();
+
+    if (profileError || !profile || profile.role === "external") {
+      setError("You do not have access to this project.");
+      setLoading(false);
+      return;
+    }
+
+    if (profile.role === "admin") {
+      router.replace(`/dashboard/project-board/${projectId}?source=external-boards`);
+      return;
+    }
+
     // Fetch project details
     const { data: projectData, error: projectError } = await supabase
       .from("projects")
-      .select("id, name, client_name, project_notes")
+      .select(
+        "id, name, client_name, internal_reference, project_notes, project_type",
+      )
       .eq("id", projectId)
-      .eq("project_type", "external")
       .maybeSingle<{
         id: string;
         name: string;
         client_name: string | null;
+        internal_reference: string | null;
         project_notes: string | null;
+        project_type: "internal" | "external" | null;
       }>();
 
     if (projectError || !projectData) {
       setError("External project not found.");
+      setLoading(false);
+      return;
+    }
+
+    if (projectData.project_type !== "external") {
+      setError("You do not have access to this project.");
       setLoading(false);
       return;
     }
@@ -94,7 +130,7 @@ export default function ExternalBoardDetailPage() {
     const { data: itemsData, error: itemsError } = await supabase
       .from("project_items")
       .select(
-        "id, section_id, quantity, client_notes, sort_order, product:products(id, name, product_type)",
+        "id, section_id, quantity, client_notes, supplier_notes, sort_order, product:products(id, name, product_type)",
       )
       .eq("project_id", projectId)
       .order("sort_order", { ascending: true });
@@ -222,6 +258,9 @@ export default function ExternalBoardDetailPage() {
               {project.client_name}
             </p>
           ) : null}
+          <p className="mt-1 text-xs font-medium text-emerald-100/65">
+            Internal Reference: {project.internal_reference ?? "—"}
+          </p>
           <span className="mt-2 inline-flex items-center rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-100 ring-1 ring-white/20">
             Read-only
           </span>
@@ -265,14 +304,15 @@ export default function ExternalBoardDetailPage() {
                     <th className="px-4 py-3">Product</th>
                     <th className="w-[120px] px-4 py-3">Type</th>
                     <th className="w-[80px] px-4 py-3 text-center">Qty</th>
-                    <th className="px-4 py-3">Notes</th>
+                    <th className="px-4 py-3">Client Notes</th>
+                    <th className="px-4 py-3">Supplier Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {section.items.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={5}
                         className="px-4 py-5 text-center text-sm text-gray-400"
                       >
                         No items in this section.
@@ -295,6 +335,9 @@ export default function ExternalBoardDetailPage() {
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-400">
                           {item.client_notes ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          {item.supplier_notes ?? "—"}
                         </td>
                       </tr>
                     ))

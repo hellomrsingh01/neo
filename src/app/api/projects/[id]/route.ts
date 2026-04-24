@@ -117,6 +117,7 @@ export async function PATCH(
       client_name: body.client_name?.trim() || null,
       internal_reference: body.internal_reference?.trim() || null,
       project_notes: body.project_notes?.trim() || null,
+      updated_at: new Date().toISOString(),
     };
 
     if (!updates.name) {
@@ -157,7 +158,7 @@ export async function DELETE(
 
     const { error: archiveError } = await supabaseClient
       .from("projects")
-      .update({ archived_at: new Date().toISOString() })
+      .delete()
       .eq("id", id);
 
     if (archiveError) {

@@ -1,10 +1,9 @@
 "use client";
 
-import Footer from "@/components/dashboard/Footer";
-import Header from "@/components/dashboard/Header";
 import { supabase } from "@/lib/supabaseClient";
+import { useHeaderUser } from "@/components/providers/HeaderUserProvider";
 import { useRouter } from "next/navigation";
-import { ChangeEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type ProductListRow = {
   id: string;
@@ -50,8 +49,10 @@ type SubcategoryOption = {
 
 export default function AdminProductsPage() {
   const router = useRouter();
+  const { user, loading: headerUserLoading } = useHeaderUser();
   const [adminChecked, setAdminChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const accessResolvedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -150,11 +151,28 @@ export default function AdminProductsPage() {
   };
 
   useEffect(() => {
+    if (accessResolvedRef.current || headerUserLoading) return;
+
+    if (user.role && user.role !== "admin") {
+      accessResolvedRef.current = true;
+      router.replace("/dashboard");
+      return;
+    }
+
+    if (user.role === "admin") {
+      accessResolvedRef.current = true;
+      setIsAdmin(true);
+      setAdminChecked(true);
+      void loadData();
+      return;
+    }
+
     const checkAdminAndLoad = async () => {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData.user?.id;
 
       if (!userId) {
+        accessResolvedRef.current = true;
         router.replace("/");
         return;
       }
@@ -166,17 +184,19 @@ export default function AdminProductsPage() {
         .maybeSingle<{ role: string | null }>();
 
       if (profile?.role !== "admin") {
+        accessResolvedRef.current = true;
         router.replace("/dashboard");
         return;
       }
 
+      accessResolvedRef.current = true;
       setIsAdmin(true);
       setAdminChecked(true);
       await loadData();
     };
 
     void checkAdminAndLoad();
-  }, [router]);
+  }, [headerUserLoading, router, user.role]);
 
   const toggleArchiveState = async (event: MouseEvent, product: ProductListRow) => {
     event.stopPropagation();
@@ -370,27 +390,14 @@ export default function AdminProductsPage() {
 
   if (!adminChecked || !isAdmin) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-        <Header />
-        <main className="w-full flex-1 px-4 pt-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px] rounded-[18px] bg-white p-6 text-gray-900">
-            Checking access...
-          </div>
-        </main>
-        <div className="w-full px-4 pb-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px]">
-            <Footer />
-          </div>
-        </div>
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-      <Header />
-      <main className="w-full flex-1 px-4 pt-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
+    <div>
           <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold text-emerald-950">Product Management</h1>
@@ -539,8 +546,6 @@ export default function AdminProductsPage() {
               </div>
             ) : null}
           </section>
-        </div>
-      </main>
       {showImportModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-[560px] rounded-[16px] bg-white p-5 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.22)] ring-1 ring-black/5">
@@ -600,11 +605,6 @@ export default function AdminProductsPage() {
           </div>
         </div>
       ) : null}
-      <div className="w-full px-4 pb-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
-          <Footer />
-        </div>
-      </div>
     </div>
   );
 }

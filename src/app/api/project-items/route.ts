@@ -305,6 +305,17 @@ export async function POST(req: Request) {
         );
       }
 
+      const { error: touchProjectError } = await supabaseClient
+        .from("projects")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", project.id);
+      if (touchProjectError) {
+        return NextResponse.json(
+          { ok: false, error: touchProjectError.message },
+          { status: 500 },
+        );
+      }
+
       void (async () => {
         try {
           await supabaseClient.from("product_usage_events").insert({
@@ -374,6 +385,17 @@ export async function POST(req: Request) {
       if (createError || !createdItem) {
         return NextResponse.json(
           { ok: false, error: createError?.message || "Failed to add product" },
+          { status: 500 },
+        );
+      }
+
+      const { error: touchProjectError } = await supabaseClient
+        .from("projects")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", projectId);
+      if (touchProjectError) {
+        return NextResponse.json(
+          { ok: false, error: touchProjectError.message },
           { status: 500 },
         );
       }
@@ -477,6 +499,17 @@ export async function POST(req: Request) {
       if (updateError) {
         return NextResponse.json(
           { ok: false, error: updateError.message },
+          { status: 500 },
+        );
+      }
+
+      const { error: touchProjectError } = await supabaseClient
+        .from("projects")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", projectId);
+      if (touchProjectError) {
+        return NextResponse.json(
+          { ok: false, error: touchProjectError.message },
           { status: 500 },
         );
       }

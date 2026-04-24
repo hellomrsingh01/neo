@@ -1,8 +1,7 @@
 "use client";
 
-import Footer from "@/components/dashboard/Footer";
-import Header from "@/components/dashboard/Header";
 import { supabase } from "@/lib/supabaseClient";
+import { useHeaderUser } from "@/components/providers/HeaderUserProvider";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -24,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Category = {
   id: string;
@@ -44,6 +43,13 @@ type Subcategory = {
   is_active: boolean;
 };
 
+type Tag = {
+  id: string;
+  name: string;
+  slug: string;
+  created_at?: string | null;
+};
+
 type CategoryForm = {
   name: string;
   icon_name: string;
@@ -55,6 +61,34 @@ type SubcategoryForm = {
   name: string;
   is_active: boolean;
 };
+
+type TagForm = {
+  name: string;
+  slug: string;
+};
+
+type PendingDelete =
+  | {
+      type: "category";
+      item: Category;
+      title: string;
+      message: string;
+      warning?: string;
+    }
+  | {
+      type: "subcategory";
+      item: Subcategory;
+      title: string;
+      message: string;
+      warning?: string;
+    }
+  | {
+      type: "tag";
+      item: Tag;
+      title: string;
+      message: string;
+      warning?: string;
+    };
 
 const slugify = (value: string) =>
   value
@@ -119,11 +153,14 @@ function SortableItem({
 
 export default function AdminCategoriesPage() {
   const router = useRouter();
+  const { user, loading: headerUserLoading } = useHeaderUser();
   const [adminChecked, setAdminChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const accessResolvedRef = useRef(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -162,12 +199,19 @@ export default function AdminCategoriesPage() {
       is_active: true,
     },
   );
+  const [newTag, setNewTag] = useState<TagForm>({ name: "", slug: "" });
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingTag, setEditingTag] = useState<TagForm>({ name: "", slug: "" });
+  const [expandedCategories, setExpandedCategories] = useState<
+    Record<string, boolean>
+  >({});
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
 
-    const [categoriesRes, subcategoriesRes] = await Promise.all([
+    const [categoriesRes, subcategoriesRes, tagsRes] = await Promise.all([
       supabase
         .from("categories")
         .select("id, name, slug, icon_name, sort_order, is_active")
@@ -176,12 +220,16 @@ export default function AdminCategoriesPage() {
         .from("subcategories")
         .select("id, category_id, name, slug, sort_order, is_active")
         .order("sort_order", { ascending: true }),
+      supabase.from("tags").select("id, name, slug, created_at").order("name", {
+        ascending: true,
+      }),
     ]);
 
-    if (categoriesRes.error || subcategoriesRes.error) {
+    if (categoriesRes.error || subcategoriesRes.error || tagsRes.error) {
       setError(
         categoriesRes.error?.message ??
           subcategoriesRes.error?.message ??
+          tagsRes.error?.message ??
           "Failed loading data.",
       );
       setLoading(false);
@@ -190,15 +238,33 @@ export default function AdminCategoriesPage() {
 
     setCategories((categoriesRes.data ?? []) as Category[]);
     setSubcategories((subcategoriesRes.data ?? []) as Subcategory[]);
+    setTags((tagsRes.data ?? []) as Tag[]);
     setLoading(false);
   }, []);
 
   useEffect(() => {
+    if (accessResolvedRef.current || headerUserLoading) return;
+
+    if (user.role && user.role !== "admin") {
+      accessResolvedRef.current = true;
+      router.replace("/dashboard");
+      return;
+    }
+
+    if (user.role === "admin") {
+      accessResolvedRef.current = true;
+      setIsAdmin(true);
+      setAdminChecked(true);
+      void loadData();
+      return;
+    }
+
     const checkAdmin = async () => {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData.user?.id;
 
       if (!userId) {
+        accessResolvedRef.current = true;
         router.replace("/");
         return;
       }
@@ -210,17 +276,19 @@ export default function AdminCategoriesPage() {
         .maybeSingle<{ role: string | null }>();
 
       if (profile?.role !== "admin") {
+        accessResolvedRef.current = true;
         router.replace("/dashboard");
         return;
       }
 
+      accessResolvedRef.current = true;
       setIsAdmin(true);
       setAdminChecked(true);
       void loadData();
     };
 
     void checkAdmin();
-  }, [loadData, router]);
+  }, [headerUserLoading, loadData, router, user.role]);
 
   const groupedSubcategories = useMemo(() => {
     const map = new Map<string, Subcategory[]>();
@@ -349,13 +417,6 @@ export default function AdminCategoriesPage() {
       );
       return;
     }
-
-    const confirmMessage =
-      (subCount ?? 0) > 0
-        ? `Delete category "${category.name}"?\n\n⚠️ This category contains ${subCount} subcategor${subCount === 1 ? "y" : "ies"}. Deleting it will also delete those subcategories.\n\nThis cannot be undone.`
-        : `Delete category "${category.name}"?\n\nThis cannot be undone.`;
-
-    if (!window.confirm(confirmMessage)) return;
 
     setSaving(true);
 
@@ -522,8 +583,6 @@ export default function AdminCategoriesPage() {
   };
 
   const deleteSubcategory = async (subcategory: Subcategory) => {
-    if (!window.confirm(`Delete subcategory "${subcategory.name}"?`)) return;
-
     setSaving(true);
     const { error: deleteError } = await supabase
       .from("subcategories")
@@ -538,29 +597,181 @@ export default function AdminCategoriesPage() {
     await loadData();
   };
 
+  const addTag = async () => {
+    const name = newTag.name.trim();
+    const slugValue = newTag.slug.trim();
+    if (!name) return;
+
+    setSaving(true);
+    const { error: insertError } = await supabase.from("tags").insert({
+      name,
+      slug: slugValue || slugify(name),
+    });
+    setSaving(false);
+
+    if (insertError) {
+      alert(insertError.message);
+      return;
+    }
+
+    setNewTag({ name: "", slug: "" });
+    await loadData();
+  };
+
+  const startEditTag = (tag: Tag) => {
+    setEditingTagId(tag.id);
+    setEditingTag({
+      name: tag.name,
+      slug: tag.slug,
+    });
+  };
+
+  const saveTag = async () => {
+    if (!editingTagId) return;
+    const name = editingTag.name.trim();
+    const slugValue = editingTag.slug.trim();
+    if (!name) return;
+
+    setSaving(true);
+    const { error: updateError } = await supabase
+      .from("tags")
+      .update({
+        name,
+        slug: slugValue || slugify(name),
+      })
+      .eq("id", editingTagId);
+    setSaving(false);
+
+    if (updateError) {
+      alert(updateError.message);
+      return;
+    }
+
+    setEditingTagId(null);
+    await loadData();
+  };
+
+  const deleteTag = async (tag: Tag) => {
+    setSaving(true);
+    const { error: deleteError } = await supabase
+      .from("tags")
+      .delete()
+      .eq("id", tag.id);
+    setSaving(false);
+
+    if (deleteError) {
+      alert(deleteError.message);
+      return;
+    }
+    await loadData();
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories((prev) => ({
+      ...prev,
+      [categoryId]: !prev[categoryId],
+    }));
+  };
+
+  const openCategoryDeleteModal = async (category: Category) => {
+    const [
+      { count: subCount, error: subCountError },
+      { count: prodCount, error: prodCountError },
+    ] = await Promise.all([
+      supabase
+        .from("subcategories")
+        .select("id", { count: "exact", head: true })
+        .eq("category_id", category.id),
+      supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("category_id", category.id),
+    ]);
+
+    if (subCountError || prodCountError) {
+      alert(subCountError?.message ?? prodCountError?.message);
+      return;
+    }
+
+    // Preserve current safety behavior: block delete when products still exist.
+    if ((prodCount ?? 0) > 0) {
+      alert(
+        `Cannot delete "${category.name}" because it still has ${prodCount} product${prodCount === 1 ? "" : "s"} assigned.\n\nMove/reassign those products to another category first, then try again.`,
+      );
+      return;
+    }
+
+    const warning =
+      (subCount ?? 0) > 0
+        ? `⚠️ This category contains ${subCount} subcategor${subCount === 1 ? "y" : "ies"}. Deleting it will also delete those subcategories.`
+        : undefined;
+
+    setPendingDelete({
+      type: "category",
+      item: category,
+      title: "Delete Category",
+      message: `Are you sure you want to delete "${category.name}"?`,
+      warning,
+    });
+  };
+
+  const openSubcategoryDeleteModal = (subcategory: Subcategory) => {
+    setPendingDelete({
+      type: "subcategory",
+      item: subcategory,
+      title: "Delete Subcategory",
+      message: `Are you sure you want to delete "${subcategory.name}"?`,
+    });
+  };
+
+  const openTagDeleteModal = (tag: Tag) => {
+    setPendingDelete({
+      type: "tag",
+      item: tag,
+      title: "Delete Tag",
+      message: `Are you sure you want to delete "${tag.name}"?`,
+    });
+  };
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+    const current = pendingDelete;
+    setPendingDelete(null);
+
+    if (current.type === "category") {
+      await deleteCategory(current.item);
+      return;
+    }
+    if (current.type === "subcategory") {
+      await deleteSubcategory(current.item);
+      return;
+    }
+    await deleteTag(current.item);
+  };
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPendingDelete(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingDelete]);
+
   if (!adminChecked || !isAdmin) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-        <Header />
-        <main className="flex-1 w-full px-4 pt-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px] rounded-[18px] bg-white p-6 text-gray-900">
-            Checking access...
-          </div>
-        </main>
-        <div className="w-full px-4 pb-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px]">
-            <Footer />
-          </div>
-        </div>
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-      <Header />
-      <main className="flex-1 w-full px-4 pt-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px] space-y-6">
+    <div className="space-y-6">
           <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
             <div className="flex items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold text-emerald-950">
@@ -740,7 +951,7 @@ export default function AdminCategoriesPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => deleteCategory(category)}
+                                  onClick={() => void openCategoryDeleteModal(category)}
                                   className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
                                 >
                                   Delete
@@ -833,151 +1044,169 @@ export default function AdminCategoriesPage() {
               <div className="mt-5 space-y-5">
                 {categories.map((category) => {
                   const list = groupedSubcategories.get(category.id) ?? [];
+                  const isExpanded = !!expandedCategories[category.id];
                   return (
                     <div
                       key={category.id}
                       className="rounded-[14px] bg-gray-50 p-4 ring-1 ring-gray-200"
                     >
-                      <h3 className="text-sm font-semibold text-emerald-950">
-                        {category.name}
-                      </h3>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-emerald-950">
+                          {category.name}
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => toggleCategory(category.id)}
+                          className="text-sm font-semibold text-gray-600 hover:text-gray-800"
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} ${category.name}`}
+                        >
+                          {isExpanded ? "▼" : "▶"}
+                        </button>
+                      </div>
 
-                      {list.length === 0 ? (
-                        <p className="mt-2 text-xs text-gray-500">
-                          No subcategories
-                        </p>
-                      ) : (
-                        <div className="mt-3 space-y-2">
-                          <SortableContext
-                            items={list.map((s) => s.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {list.map((sub) => (
-                              <SortableItem key={sub.id} id={sub.id}>
-                                {(handleProps) => (
-                                  <div className="grid gap-3 rounded-[12px] bg-white p-3 ring-1 ring-gray-200 items-center md:grid-cols-[auto_1fr_auto]">
-                                    {/* Drag handle */}
-                                    <div
-                                      {...handleProps}
-                                      className="flex items-center justify-center self-stretch cursor-grab active:cursor-grabbing rounded-lg px-2 hover:bg-gray-100 transition-colors"
-                                    >
-                                      <DragHandleIcon className="h-4 w-4 text-gray-400" />
-                                    </div>
+                      {isExpanded
+                        ? list.length === 0
+                          ? (
+                              <p className="mt-2 text-xs text-gray-500">
+                                No subcategories
+                              </p>
+                            )
+                          : (
+                              <div className="mt-3 space-y-2">
+                                <SortableContext
+                                  items={list.map((s) => s.id)}
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  {list.map((sub) => (
+                                    <SortableItem key={sub.id} id={sub.id}>
+                                      {(handleProps) => (
+                                        <div className="grid gap-3 rounded-[12px] bg-white p-3 ring-1 ring-gray-200 items-center md:grid-cols-[auto_1fr_auto]">
+                                          {/* Drag handle */}
+                                          <div
+                                            {...handleProps}
+                                            className="flex items-center justify-center self-stretch cursor-grab active:cursor-grabbing rounded-lg px-2 hover:bg-gray-100 transition-colors"
+                                          >
+                                            <DragHandleIcon className="h-4 w-4 text-gray-400" />
+                                          </div>
 
-                                    {/* Name / edit form */}
-                                    {editingSubcategoryId === sub.id ? (
-                                      <div className="grid gap-2 md:grid-cols-3">
-                                        <select
-                                          value={editingSubcategory.category_id}
-                                          onChange={(e) =>
-                                            setEditingSubcategory((prev) => ({
-                                              ...prev,
-                                              category_id: e.target.value,
-                                            }))
-                                          }
-                                          className="h-9 rounded-[10px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200"
-                                        >
-                                          {categories.map((item) => (
-                                            <option
-                                              key={item.id}
-                                              value={item.id}
-                                            >
-                                              {item.name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <input
-                                          value={editingSubcategory.name}
-                                          onChange={(e) =>
-                                            setEditingSubcategory((prev) => ({
-                                              ...prev,
-                                              name: e.target.value,
-                                            }))
-                                          }
-                                          className="h-9 rounded-[10px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200"
-                                        />
-                                        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                                          <input
-                                            type="checkbox"
-                                            checked={
-                                              editingSubcategory.is_active
-                                            }
-                                            onChange={(e) =>
-                                              setEditingSubcategory((prev) => ({
-                                                ...prev,
-                                                is_active: e.target.checked,
-                                              }))
-                                            }
-                                          />
-                                          Active
-                                        </label>
-                                      </div>
-                                    ) : (
-                                      <div className="text-sm text-gray-800">
-                                        <span className="font-semibold">
-                                          {sub.name}
-                                        </span>
-                                        <span className="ml-2 text-xs text-gray-500">
-                                          ({sub.slug}) · sort: {sub.sort_order}{" "}
-                                          ·{" "}
-                                          {sub.is_active
-                                            ? "Active"
-                                            : "Inactive"}
-                                        </span>
-                                      </div>
-                                    )}
+                                          {/* Name / edit form */}
+                                          {editingSubcategoryId === sub.id ? (
+                                            <div className="grid gap-2 md:grid-cols-3">
+                                              <select
+                                                value={editingSubcategory.category_id}
+                                                onChange={(e) =>
+                                                  setEditingSubcategory((prev) => ({
+                                                    ...prev,
+                                                    category_id: e.target.value,
+                                                  }))
+                                                }
+                                                className="h-9 rounded-[10px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200"
+                                              >
+                                                {categories.map((item) => (
+                                                  <option
+                                                    key={item.id}
+                                                    value={item.id}
+                                                  >
+                                                    {item.name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              <input
+                                                value={editingSubcategory.name}
+                                                onChange={(e) =>
+                                                  setEditingSubcategory((prev) => ({
+                                                    ...prev,
+                                                    name: e.target.value,
+                                                  }))
+                                                }
+                                                className="h-9 rounded-[10px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200"
+                                              />
+                                              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={
+                                                    editingSubcategory.is_active
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditingSubcategory((prev) => ({
+                                                      ...prev,
+                                                      is_active: e.target.checked,
+                                                    }))
+                                                  }
+                                                />
+                                                Active
+                                              </label>
+                                            </div>
+                                          ) : (
+                                            <div className="text-sm text-gray-800">
+                                              <span className="font-semibold">
+                                                {sub.name}
+                                              </span>
+                                              <span className="ml-2 text-xs text-gray-500">
+                                                ({sub.slug}) · sort: {sub.sort_order}{" "}
+                                                ·{" "}
+                                                {sub.is_active
+                                                  ? "Active"
+                                                  : "Inactive"}
+                                              </span>
+                                            </div>
+                                          )}
 
-                                    {/* Actions */}
-                                    <div className="flex flex-wrap items-center justify-end gap-2">
-                                      {editingSubcategoryId === sub.id ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={saveSubcategory}
-                                            className="h-8 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white"
-                                          >
-                                            Save
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setEditingSubcategoryId(null)
-                                            }
-                                            className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
-                                          >
-                                            Cancel
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              startEditSubcategory(sub)
-                                            }
-                                            className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
-                                          >
-                                            Edit
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              deleteSubcategory(sub)
-                                            }
-                                            className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
-                                          >
-                                            Delete
-                                          </button>
-                                        </>
+                                          {/* Actions */}
+                                          <div className="flex flex-wrap items-center justify-end gap-2">
+                                            {editingSubcategoryId === sub.id ? (
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={saveSubcategory}
+                                                  className="h-8 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white"
+                                                >
+                                                  Save
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setEditingSubcategoryId(null)
+                                                  }
+                                                  className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    startEditSubcategory(sub)
+                                                  }
+                                                  className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
+                                                >
+                                                  Edit
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    openSubcategoryDeleteModal(
+                                                      sub,
+                                                    )
+                                                  }
+                                                  className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
+                                                >
+                                                  Delete
+                                                </button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
                                       )}
-                                    </div>
-                                  </div>
-                                )}
-                              </SortableItem>
-                            ))}
-                          </SortableContext>
-                        </div>
-                      )}
+                                    </SortableItem>
+                                  ))}
+                                </SortableContext>
+                              </div>
+                            )
+                        : null}
                     </div>
                   );
                 })}
@@ -992,13 +1221,157 @@ export default function AdminCategoriesPage() {
               </DragOverlay>
             </DndContext>
           </section>
+
+          <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
+            <h2 className="text-xl font-semibold text-emerald-950">
+              Tag Management
+            </h2>
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <input
+                value={newTag.name}
+                onChange={(e) =>
+                  setNewTag((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="Tag name"
+                className="h-10 rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+              />
+              <input
+                value={newTag.slug}
+                onChange={(e) =>
+                  setNewTag((prev) => ({ ...prev, slug: e.target.value }))
+                }
+                placeholder="Slug (optional)"
+                className="h-10 rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+              />
+              <button
+                type="button"
+                onClick={addTag}
+                className="h-10 rounded-[12px] bg-emerald-900 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+              >
+                Add Tag
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              {tags.length === 0 ? (
+                <p className="text-sm text-gray-500">No tags yet.</p>
+              ) : (
+                tags.map((tag) => (
+                  <div
+                    key={tag.id}
+                    className="grid gap-3 rounded-[12px] bg-gray-50 p-3 ring-1 ring-gray-200 items-center md:grid-cols-[1fr_1fr_auto]"
+                  >
+                    {editingTagId === tag.id ? (
+                      <>
+                        <input
+                          value={editingTag.name}
+                          onChange={(e) =>
+                            setEditingTag((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                          className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
+                        />
+                        <input
+                          value={editingTag.slug}
+                          onChange={(e) =>
+                            setEditingTag((prev) => ({
+                              ...prev,
+                              slug: e.target.value,
+                            }))
+                          }
+                          className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
+                        />
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={saveTag}
+                            className="h-8 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingTagId(null)}
+                            className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-sm font-semibold text-gray-900">
+                          {tag.name}
+                        </div>
+                        <div className="text-xs font-medium text-gray-500">
+                          ({tag.slug})
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditTag(tag)}
+                            className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openTagDeleteModal(tag)}
+                            className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+      {pendingDelete ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-[16px] bg-white p-5 text-gray-900 shadow-2xl ring-1 ring-black/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-emerald-950">
+              {pendingDelete.title}
+            </h3>
+            <p className="mt-2 text-sm text-gray-700">{pendingDelete.message}</p>
+            {pendingDelete.warning ? (
+              <p className="mt-2 text-sm font-medium text-amber-700">
+                {pendingDelete.warning}
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-gray-500">
+              This action cannot be undone.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="h-9 rounded-lg bg-gray-100 px-4 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmPendingDelete()}
+                className="h-9 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={saving}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
-      </main>
-      <div className="w-full px-4 pb-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
-          <Footer />
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }

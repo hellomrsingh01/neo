@@ -1,16 +1,17 @@
 "use client";
 
-import Footer from "@/components/dashboard/Footer";
-import Header from "@/components/dashboard/Header";
 import { supabase } from "@/lib/supabaseClient";
+import { useHeaderUser } from "@/components/providers/HeaderUserProvider";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   ChangeEvent,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -103,20 +104,25 @@ export default function ProductEditorForm({
   productId,
 }: ProductEditorFormProps) {
   const router = useRouter();
+  const { user, loading: headerUserLoading } = useHeaderUser();
   const isEditMode = Boolean(productId);
 
   const [adminChecked, setAdminChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const accessResolvedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [addingTag, setAddingTag] = useState(false);
 
   const [form, setForm] = useState<ProductFormState>(emptyForm);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -282,12 +288,45 @@ export default function ProductEditorForm({
   }, [productId]);
 
   useEffect(() => {
+    if (accessResolvedRef.current || headerUserLoading) return;
+
+    const loadEditorData = async () => {
+      setIsAdmin(true);
+      setAdminChecked(true);
+      setLoading(true);
+      try {
+        await loadBaseData();
+        if (isEditMode) {
+          await loadProduct();
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : "Failed to load data.";
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user.role && user.role !== "admin") {
+      accessResolvedRef.current = true;
+      router.replace("/dashboard");
+      return;
+    }
+
+    if (user.role === "admin") {
+      accessResolvedRef.current = true;
+      void loadEditorData();
+      return;
+    }
+
     const checkAdminAndLoad = async () => {
       try {
         const { data: authData } = await supabase.auth.getUser();
         const userId = authData.user?.id;
 
         if (!userId) {
+          accessResolvedRef.current = true;
           router.replace("/");
           return;
         }
@@ -299,10 +338,12 @@ export default function ProductEditorForm({
           .maybeSingle<{ role: string | null }>();
 
         if (profile?.role !== "admin") {
+          accessResolvedRef.current = true;
           router.replace("/dashboard");
           return;
         }
 
+        accessResolvedRef.current = true;
         setIsAdmin(true);
         setAdminChecked(true);
         setLoading(true);
@@ -322,7 +363,7 @@ export default function ProductEditorForm({
     };
 
     void checkAdminAndLoad();
-  }, [isEditMode, loadBaseData, loadProduct, router]);
+  }, [headerUserLoading, isEditMode, loadBaseData, loadProduct, router, user.role]);
 
   useEffect(() => {
     const previews = selectedImageFiles.map((file) =>
@@ -341,6 +382,71 @@ export default function ProductEditorForm({
         ? prev.filter((id) => id !== tagId)
         : [...prev, tagId],
     );
+  };
+
+  const handleAddTag = async () => {
+    resetMessages();
+    const typedName = newTagName.trim();
+    if (!typedName || addingTag) return;
+
+    const normalizedName = typedName.toLowerCase();
+    const baseSlug = slugify(typedName);
+    const normalizedSlug = baseSlug.toLowerCase();
+
+    const existingTag = tags.find((tag) => {
+      const tagName = tag.name.trim().toLowerCase();
+      const tagSlug = tag.slug.trim().toLowerCase();
+      return tagName === normalizedName || tagSlug === normalizedSlug;
+    });
+
+    if (existingTag) {
+      setSelectedTagIds((prev) =>
+        prev.includes(existingTag.id) ? prev : [...prev, existingTag.id],
+      );
+      setNewTagName("");
+      return;
+    }
+
+    setAddingTag(true);
+    try {
+      const uniqueSlug = await ensureUniqueSlug("tags", baseSlug);
+      const { data: insertedTag, error: insertError } = await supabase
+        .from("tags")
+        .insert({
+          name: typedName,
+          slug: uniqueSlug,
+        })
+        .select("id, name, slug")
+        .single<Tag>();
+
+      if (insertError || !insertedTag) {
+        throw new Error(insertError?.message ?? "Failed to create tag.");
+      }
+
+      setTags((prev) =>
+        [...prev, insertedTag].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setSelectedTagIds((prev) =>
+        prev.includes(insertedTag.id) ? prev : [...prev, insertedTag.id],
+      );
+      setNewTagName("");
+    } catch (addTagError) {
+      const message =
+        addTagError instanceof Error
+          ? addTagError.message
+          : "Failed to create tag.";
+      setError(message);
+    } finally {
+      setAddingTag(false);
+    }
+  };
+
+  const handleTagInputKeyDown = (
+    event: ReactKeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void handleAddTag();
   };
 
   const uploadAndProcessImage = async (finalProductId: string, file: File) => {
@@ -583,13 +689,9 @@ export default function ProductEditorForm({
     }
   };
 
-  const handleDelete = async () => {
+  const performDelete = async () => {
     if (!productId) return;
     resetMessages();
-
-    if (!window.confirm("Delete this product permanently?")) {
-      return;
-    }
 
     setSaving(true);
     try {
@@ -645,6 +747,19 @@ export default function ProductEditorForm({
     }
   };
 
+  useEffect(() => {
+    if (!showDeleteConfirm) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowDeleteConfirm(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showDeleteConfirm]);
+
   const getImageUrl = (path: string) => {
     const { data } = supabase.storage.from("product-images").getPublicUrl(path);
     return data.publicUrl;
@@ -661,27 +776,14 @@ export default function ProductEditorForm({
 
   if (!adminChecked || !isAdmin) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-        <Header />
-        <main className="w-full flex-1 px-4 pt-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px] rounded-[18px] bg-white p-6 text-gray-900">
-            Checking access...
-          </div>
-        </main>
-        <div className="w-full px-4 pb-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px]">
-            <Footer />
-          </div>
-        </div>
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-      <Header />
-      <main className="w-full flex-1 px-4 pt-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
+    <div>
           <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold text-emerald-950">
@@ -691,7 +793,7 @@ export default function ProductEditorForm({
                 <button
                   type="button"
                   onClick={() => router.push("/admin/products")}
-                  className="h-9 rounded-[10px] bg-gray-100 px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200"
+                  className="h-9 rounded-[10px] bg-emerald-900 px-3 text-xs font-semibold text-white hover:bg-emerald-800"
                 >
                   Back to Products
                 </button>
@@ -699,8 +801,8 @@ export default function ProductEditorForm({
                   <button
                     type="button"
                     disabled={saving}
-                    onClick={handleDelete}
-                    className="h-9 rounded-[10px] bg-red-600 px-3 text-xs font-semibold text-white disabled:opacity-70"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="h-9 rounded-[10px] bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-70"
                   >
                     Delete Product
                   </button>
@@ -937,6 +1039,23 @@ export default function ProductEditorForm({
                   <label className="block text-[11px] font-semibold text-gray-600">
                     Tags
                   </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={newTagName}
+                      onChange={(event) => setNewTagName(event.target.value)}
+                      onKeyDown={handleTagInputKeyDown}
+                      placeholder="Type new tag"
+                      className="h-9 w-full max-w-xs rounded-[10px] bg-gray-100 px-3 text-xs ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleAddTag()}
+                      disabled={addingTag}
+                      className="h-9 rounded-[10px] bg-gray-100 px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 disabled:opacity-70"
+                    >
+                      {addingTag ? "Adding..." : "Add Tag"}
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {tags.map((tag) => {
                       const selected = selectedTagIds.includes(tag.id);
@@ -1036,13 +1155,6 @@ export default function ProductEditorForm({
 
                 <div className="flex items-center justify-end gap-2">
                   <button
-                    type="button"
-                    onClick={() => router.push("/admin/products")}
-                    className="h-10 rounded-[10px] bg-gray-100 px-4 text-sm font-semibold text-gray-700 ring-1 ring-gray-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
                     type="submit"
                     disabled={saving}
                     className="h-10 rounded-[10px] bg-emerald-900 px-4 text-sm font-semibold text-white disabled:opacity-70"
@@ -1053,13 +1165,47 @@ export default function ProductEditorForm({
               </form>
             ) : null}
           </section>
+      {showDeleteConfirm ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-[16px] bg-white p-5 text-gray-900 shadow-2xl ring-1 ring-black/10"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-emerald-950">
+              Delete Product
+            </h3>
+            <p className="mt-2 text-sm text-gray-700">
+              Are you sure you want to delete this product permanently?
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              This action cannot be undone.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="h-9 rounded-lg bg-gray-100 px-4 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  void performDelete();
+                }}
+                className="h-9 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={saving}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
-      </main>
-      <div className="w-full px-4 pb-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
-          <Footer />
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,7 @@
 "use client";
 
-import Footer from "@/components/dashboard/Footer";
-import Header from "@/components/dashboard/Header";
 import { supabase } from "@/lib/supabaseClient";
+import { useHeaderUser } from "@/components/providers/HeaderUserProvider";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -24,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Manufacturer = {
   id: string;
@@ -40,6 +39,15 @@ type ManufacturerForm = {
   name: string;
   default_rfq_email: string;
   default_rfq_subject_template: string;
+};
+
+type PendingManufacturerAction = {
+  type: "archive" | "delete";
+  manufacturer: Manufacturer;
+  title: string;
+  message: string;
+  warning?: string;
+  confirmLabel: "Archive" | "Delete";
 };
 
 const emptyForm: ManufacturerForm = {
@@ -104,8 +112,10 @@ function SortableItem({
 
 export default function AdminManufacturersPage() {
   const router = useRouter();
+  const { user, loading: headerUserLoading } = useHeaderUser();
   const [adminChecked, setAdminChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const accessResolvedRef = useRef(false);
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +127,8 @@ export default function AdminManufacturersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingManufacturer, setEditingManufacturer] =
     useState<ManufacturerForm>(emptyForm);
+  const [pendingAction, setPendingAction] =
+    useState<PendingManufacturerAction | null>(null);
 
   const [activeManufacturerId, setActiveManufacturerId] =
     useState<UniqueIdentifier | null>(null);
@@ -149,11 +161,28 @@ export default function AdminManufacturersPage() {
   }, []);
 
   useEffect(() => {
+    if (accessResolvedRef.current || headerUserLoading) return;
+
+    if (user.role && user.role !== "admin") {
+      accessResolvedRef.current = true;
+      router.replace("/dashboard");
+      return;
+    }
+
+    if (user.role === "admin") {
+      accessResolvedRef.current = true;
+      setIsAdmin(true);
+      setAdminChecked(true);
+      void loadManufacturers();
+      return;
+    }
+
     const checkAdmin = async () => {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData.user?.id;
 
       if (!userId) {
+        accessResolvedRef.current = true;
         router.replace("/");
         return;
       }
@@ -165,17 +194,19 @@ export default function AdminManufacturersPage() {
         .maybeSingle<{ role: string | null }>();
 
       if (profile?.role !== "admin") {
+        accessResolvedRef.current = true;
         router.replace("/dashboard");
         return;
       }
 
+      accessResolvedRef.current = true;
       setIsAdmin(true);
       setAdminChecked(true);
       void loadManufacturers();
     };
 
     void checkAdmin();
-  }, [loadManufacturers, router]);
+  }, [headerUserLoading, loadManufacturers, router, user.role]);
 
   const persistOrder = useCallback(
     async (nextManufacturers: Manufacturer[]) => {
@@ -288,15 +319,6 @@ export default function AdminManufacturersPage() {
     manufacturer: Manufacturer,
     isArchived: boolean,
   ) => {
-    if (
-      isArchived &&
-      !window.confirm(
-        "Archiving will also archive all products by this manufacturer. Continue?",
-      )
-    ) {
-      return;
-    }
-
     setSaving(true);
     const { error: updateError } = await supabase
       .from("manufacturers")
@@ -309,46 +331,115 @@ export default function AdminManufacturersPage() {
       return;
     }
 
-    if (isArchived) {
-      const { error: productsArchiveError } = await supabase
-        .from("products")
-        .update({ is_archived: true })
-        .eq("manufacturer_id", manufacturer.id);
+    const { error: productsArchiveError } = await supabase
+      .from("products")
+      .update({ is_archived: isArchived })
+      .eq("manufacturer_id", manufacturer.id);
 
-      if (productsArchiveError) {
-        alert(
-          `Manufacturer archived, but product archiving failed. Products may need manual archiving. Error: ${productsArchiveError.message}`,
-        );
-      }
+    if (productsArchiveError) {
+      alert(
+        `Manufacturer ${isArchived ? "archived" : "unarchived"}, but product update failed. Products may need manual updates. Error: ${productsArchiveError.message}`,
+      );
     }
 
     await loadManufacturers();
   };
 
+  const openArchiveModal = (manufacturer: Manufacturer) => {
+    setPendingAction({
+      type: "archive",
+      manufacturer,
+      title: "Archive Manufacturer",
+      message: `Are you sure you want to archive "${manufacturer.name}"?`,
+      warning: "Archiving will also archive all products by this manufacturer.",
+      confirmLabel: "Archive",
+    });
+  };
+
+  const openDeleteModal = (manufacturer: Manufacturer) => {
+    setPendingAction({
+      type: "delete",
+      manufacturer,
+      title: "Delete Manufacturer",
+      message: `Are you sure you want to delete "${manufacturer.name}"?`,
+      warning:
+        "Delete is only allowed when no products are linked to this manufacturer.",
+      confirmLabel: "Delete",
+    });
+  };
+
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return;
+    const current = pendingAction;
+    setPendingAction(null);
+    setError("");
+
+    if (current.type === "archive") {
+      await setArchived(current.manufacturer, true);
+      return;
+    }
+
+    setSaving(true);
+    const { count, error: countError } = await supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("manufacturer_id", current.manufacturer.id);
+
+    if (countError) {
+      setSaving(false);
+      alert(countError.message);
+      return;
+    }
+
+    if ((count ?? 0) > 0) {
+      setSaving(false);
+      setError(
+        `Cannot delete "${current.manufacturer.name}" because it still has ${count} product${count === 1 ? "" : "s"} linked. Reassign or remove those products first.`,
+      );
+      return;
+    }
+
+    const { error: deleteError } = await supabase
+      .from("manufacturers")
+      .delete()
+      .eq("id", current.manufacturer.id);
+    setSaving(false);
+
+    if (deleteError) {
+      alert(deleteError.message);
+      return;
+    }
+
+    if (editingId === current.manufacturer.id) {
+      setEditingId(null);
+    }
+    await loadManufacturers();
+  };
+
+  useEffect(() => {
+    if (!pendingAction) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPendingAction(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingAction]);
+
   if (!adminChecked || !isAdmin) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-        <Header />
-        <main className="flex-1 w-full px-4 pt-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px] rounded-[18px] bg-white p-6 text-gray-900">
-            Checking access...
-          </div>
-        </main>
-        <div className="w-full px-4 pb-6 sm:px-6">
-          <div className="mx-auto w-full max-w-[1240px]">
-            <Footer />
-          </div>
-        </div>
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#003c33] text-white">
-      <Header />
-      <main className="flex-1 w-full px-4 pt-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
-          <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
+    <div>
+      <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
             <div className="flex items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold text-emerald-950">
                 Manufacturer Management
@@ -428,7 +519,13 @@ export default function AdminManufacturersPage() {
                   {manufacturers.map((manufacturer) => (
                     <SortableItem key={manufacturer.id} id={manufacturer.id}>
                       {(handleProps) => (
-                        <div className="grid gap-3 rounded-[14px] bg-gray-50 p-3 ring-1 ring-gray-200 items-center md:grid-cols-[auto_1fr_auto]">
+                        <div
+                          className={`grid gap-3 rounded-[14px] p-3 ring-1 items-center md:grid-cols-[auto_1fr_auto] ${
+                            manufacturer.is_archived
+                              ? "bg-gray-100 ring-gray-300"
+                              : "bg-gray-50 ring-gray-200"
+                          }`}
+                        >
                           {/* Drag handle */}
                           <div
                             {...handleProps}
@@ -481,6 +578,11 @@ export default function AdminManufacturersPage() {
                                 <span className="ml-2 text-xs font-medium text-gray-500">
                                   ({manufacturer.slug})
                                 </span>
+                                {manufacturer.is_archived ? (
+                                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-700 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                    Archived
+                                  </span>
+                                ) : null}
                               </div>
                               <div className="mt-1 text-xs text-gray-600">
                                 Email: {manufacturer.default_rfq_email || "—"} ·
@@ -499,6 +601,25 @@ export default function AdminManufacturersPage() {
                           <div className="flex flex-wrap items-center justify-end gap-2">
                             {editingId === manufacturer.id ? (
                               <>
+                                {manufacturer.is_archived ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setArchived(manufacturer, false)
+                                    }
+                                    className="h-8 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white"
+                                  >
+                                    Unarchive
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => openArchiveModal(manufacturer)}
+                                    className="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white"
+                                  >
+                                    Archive
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={saveManufacturer}
@@ -523,27 +644,13 @@ export default function AdminManufacturersPage() {
                                 >
                                   Edit
                                 </button>
-                                {manufacturer.is_archived ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setArchived(manufacturer, false)
-                                    }
-                                    className="h-8 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white"
-                                  >
-                                    Unarchive
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setArchived(manufacturer, true)
-                                    }
-                                    className="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white"
-                                  >
-                                    Archive
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openDeleteModal(manufacturer)}
+                                  className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
+                                >
+                                  Delete
+                                </button>
                               </>
                             )}
                           </div>
@@ -562,14 +669,54 @@ export default function AdminManufacturersPage() {
                 ) : null}
               </DragOverlay>
             </DndContext>
-          </section>
+      </section>
+      {pendingAction ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
+          onClick={() => setPendingAction(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-[16px] bg-white p-5 text-gray-900 shadow-2xl ring-1 ring-black/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-emerald-950">
+              {pendingAction.title}
+            </h3>
+            <p className="mt-2 text-sm text-gray-700">{pendingAction.message}</p>
+            {pendingAction.warning ? (
+              <p className="mt-2 text-sm font-medium text-amber-700">
+                {pendingAction.warning}
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-gray-500">
+              {pendingAction.type === "delete"
+                ? "This action cannot be undone."
+                : "Please confirm to continue."}
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingAction(null)}
+                className="h-9 rounded-lg bg-gray-100 px-4 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmPendingAction()}
+                className={`h-9 rounded-lg px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70 ${
+                  pendingAction.type === "delete"
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-amber-600 hover:bg-amber-700"
+                }`}
+                disabled={saving}
+              >
+                {pendingAction.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
-      </main>
-      <div className="w-full px-4 pb-6 sm:px-6">
-        <div className="mx-auto w-full max-w-[1240px]">
-          <Footer />
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }

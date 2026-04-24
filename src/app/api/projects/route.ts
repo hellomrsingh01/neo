@@ -88,8 +88,8 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: false });
 
     if (requesterRole === "admin") {
-      // admin sees all internal projects here (external projects are in dedicated External Boards area)
-      query = query.eq("project_type", "internal");
+      // admin sees only their own internal projects on this page
+      query = query.eq("owner_user_id", requesterId).eq("project_type", "internal");
     } else if (requesterRole === "external") {
       // external users only see their own external projects
       query = query.eq("owner_user_id", requesterId).eq("project_type", "external");
@@ -172,7 +172,7 @@ export async function GET(req: Request) {
       showingCount: projects.length,
       totalCount: projects.length,
       totalUnits,
-      canViewAll: requesterRole === "admin",
+      canViewAll: false,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";

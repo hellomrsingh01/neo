@@ -2,16 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { UserDropdown } from "@/components/dashboard/UserDropdown";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useHeaderUser } from "@/components/providers/HeaderUserProvider";
 import { supabase } from "@/lib/supabaseClient";
-import { usePathname, useRouter } from "next/navigation";
-
-type HeaderUser = {
-  fullName: string;
-  email: string;
-  role: string | null;
-};
 
 type NavTabProps = {
   label: string;
@@ -149,68 +144,31 @@ function HeaderIcon({
 }
 
 export default function Header() {
-  const [user, setUser] = useState<HeaderUser>({
-    fullName: "Your name",
-    email: "you@neooffice.com",
-    role: null,
-  });
+  const { user } = useHeaderUser();
   const [headerSearch, setHeaderSearch] = useState("");
 
   const router = useRouter();
   const pathname = usePathname();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadHeaderUser = async () => {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        const authUser = authData?.user;
-        if (!authUser?.id || cancelled) return;
-
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("full_name, email, role")
-          .eq("id", authUser.id)
-          .maybeSingle<{
-            full_name: string | null;
-            email: string | null;
-            role: string | null;
-          }>();
-
-        if (cancelled) return;
-
-        setUser({
-          fullName: (profile?.full_name ?? "").trim() || "Your name",
-          email: profile?.email ?? authUser.email ?? "you@neooffice.com",
-          role: profile?.role ?? null,
-        });
-      } catch {
-        // Keep defaults on failure
-      }
-    };
-
-    loadHeaderUser();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const searchParams = useSearchParams();
 
   const logout = async () => {
     await supabase.auth.signOut();
     router.replace("/");
   };
 
+  const isProjectBoardDetailPath = pathname.startsWith("/dashboard/project-board/");
+  const isExternalBoardsSource =
+    isProjectBoardDetailPath &&
+    searchParams.get("source") === "external-boards";
   const isDashboardActive = pathname === "/dashboard";
   const isProductCatalogueActive = pathname.startsWith(
     "/dashboard/product-catalogue",
   );
   const isProjectBoardActive =
-    pathname.startsWith("/dashboard/project-board");
+    pathname.startsWith("/dashboard/project-board") && !isExternalBoardsSource;
   const isAdminCategoriesActive = pathname.startsWith("/admin/categories");
-  const isExternalBoardsActive = pathname.startsWith(
-    "/dashboard/external-boards",
-  );
+  const isExternalBoardsActive =
+    pathname.startsWith("/dashboard/external-boards") || isExternalBoardsSource;
   const isAdminManufacturersActive = pathname.startsWith(
     "/admin/manufacturers",
   );
