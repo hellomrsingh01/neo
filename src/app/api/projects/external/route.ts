@@ -24,6 +24,8 @@ type ExternalProjectRow = {
   client_name: string | null;
   created_at: string;
   updated_at: string;
+  owner_user_id: string;
+  project_type: "internal" | "external" | null;
 };
 
 export async function GET(req: Request) {
@@ -43,32 +45,35 @@ export async function GET(req: Request) {
     const userId = authData.user.id;
 
     // FIX: profile + projects fetched in parallel
-    const [
-      { data: profile, error: profileError },
-      { data: projectRows, error: projectsError },
-    ] = await Promise.all([
+    const [{ data: profile, error: profileError }] = await Promise.all([
       supabase
         .from("profiles")
         .select("role")
         .eq("id", userId)
         .single<{ role: string }>(),
-      supabase
-        .from("projects")
-        .select("id, name, client_name, created_at, updated_at")
-        .eq("project_type", "external")
-        .is("archived_at", null)
-        .order("created_at", { ascending: false }),
     ]);
 
     // Role check after both resolve
     if (profileError || !profile || profile.role === "external") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    let projectsQuery = supabase
+      .from("projects")
+      .select(
+        "id, name, client_name, created_at, updated_at, owner_user_id, project_type",
+      )
+      .is("archived_at", null)
+      .order("created_at", { ascending: false });
+
+    if (profile.role === "admin") {
+      projectsQuery = projectsQuery.neq("owner_user_id", userId);
+    } else {
+      projectsQuery = projectsQuery.eq("project_type", "external");
+    }
+
+    const { data: projectRows, error: projectsError } = await projectsQuery;
     if (projectsError) {
-      return NextResponse.json(
-        { error: projectsError.message },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: projectsError.message }, { status: 500 });
     }
 
     const rows = (projectRows ?? []) as ExternalProjectRow[];
@@ -113,6 +118,9 @@ export async function GET(req: Request) {
       client_name: p.client_name,
       created_at: p.created_at,
       updated_at: p.updated_at,
+      owner_user_id: p.owner_user_id,
+      project_type: p.project_type,
+      can_edit: profile.role === "admin",
       item_count: itemCountMap.get(p.id) ?? 0,
       last_viewed_at: lastViewedMap.get(p.id) ?? null,
     }));

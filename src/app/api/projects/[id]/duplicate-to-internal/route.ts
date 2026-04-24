@@ -68,24 +68,36 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Fetch source project (must be external type)
+    // Fetch source project (role-based access)
     const { data: sourceProject, error: sourceError } = await supabase
       .from("projects")
-      .select("name, client_name, internal_reference, project_notes")
+      .select(
+        "name, client_name, internal_reference, project_notes, owner_user_id, project_type",
+      )
       .eq("id", sourceProjectId)
-      .eq("project_type", "external")
+      .is("archived_at", null)
       .maybeSingle<{
         name: string;
         client_name: string | null;
         internal_reference: string | null;
         project_notes: string | null;
+        owner_user_id: string;
+        project_type: "internal" | "external" | null;
       }>();
 
     if (sourceError || !sourceProject) {
       return NextResponse.json(
-        { error: "External project not found" },
+        { error: "Project not found" },
         { status: 404 },
       );
+    }
+
+    const canDuplicate =
+      (profile.role === "admin" && sourceProject.owner_user_id !== userId) ||
+      (profile.role === "internal" && sourceProject.project_type === "external");
+
+    if (!canDuplicate) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Fetch source sections

@@ -141,9 +141,9 @@ function Icon({
         xmlns="http://www.w3.org/2000/svg"
       >
         <path
-          d="M12 21s-7-4.6-9.2-8.9C1.2 9.1 3 6.2 6.3 6c1.9-.1 3.2.8 3.9 1.8.7-1 2-1.9 3.9-1.8 3.3.2 5.1 3.1 3.5 6.1C19 16.4 12 21 12 21Z"
-          className={common}
-          strokeWidth="1.6"
+  d="M12 20.5c-.3 0-.6-.1-.8-.3C7.2 17 4 14.2 2.7 11.7c-1.4-2.6-.6-5.6 2.2-6.9 2.1-1 4.4-.3 5.7 1.3 1.3-1.6 3.6-2.3 5.7-1.3 2.8 1.3 3.6 4.3 2.2 6.9-1.3 2.5-4.5 5.3-8.5 8.5-.2.2-.5.3-.8.3z"
+  className={common}
+          strokeWidth="1.8"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
@@ -315,6 +315,7 @@ export default function ProductCataloguePage() {
   const [subcategories, setSubcategories] = useState<
     { id: string; label: string; slug?: string }[]
   >([]);
+  const [isLoadingSubcategories, setIsLoadingSubcategories] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
 
@@ -575,10 +576,17 @@ export default function ProductCataloguePage() {
 
   useEffect(() => {
     let active = true;
+    const activeCategoryKey = searchParams.get("category");
     const loadFilters = async () => {
       setFiltersLoading(true);
       setFiltersError(false);
-      setSubcategories([]); // ← always reset first
+      if (activeCategoryKey) {
+        setIsLoadingSubcategories(true);
+        setSubcategories([]);
+      } else {
+        setIsLoadingSubcategories(false);
+        setSubcategories([]);
+      }
       try {
         const [
           { data: cats, error: catsErr },
@@ -601,7 +609,6 @@ export default function ProductCataloguePage() {
             .order("name", { ascending: true }),
         ]);
 
-        const activeCategoryKey = searchParams.get("category");
         if (activeCategoryKey) {
           const matchedCat = cats?.find(
             (c) => c.slug === activeCategoryKey || c.id === activeCategoryKey,
@@ -623,6 +630,7 @@ export default function ProductCataloguePage() {
               );
             }
           }
+          if (active) setIsLoadingSubcategories(false);
         }
 
         if (catsErr || mansErr || tagsErr) {
@@ -651,6 +659,7 @@ export default function ProductCataloguePage() {
         } else {
           // Clicking "All" removes category query param; clear any previous filter.
           setSelectedCategories([]);
+          setIsLoadingSubcategories(false);
         }
         const searchFromUrl = searchParams.get("search")?.trim() ?? "";
         if (searchFromUrl) {
@@ -661,8 +670,12 @@ export default function ProductCataloguePage() {
       } catch {
         if (!active) return;
         setFiltersError(true);
+        setIsLoadingSubcategories(false);
       } finally {
-        if (active) setFiltersLoading(false);
+        if (active) {
+          setFiltersLoading(false);
+          setIsLoadingSubcategories(false);
+        }
       }
     };
     loadFilters();
@@ -1125,46 +1138,77 @@ export default function ProductCataloguePage() {
               href="/admin/products/new"
               className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
             >
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15">
-                <Icon name="plus" className="h-4 w-4 text-white" />
-              </span>
+              <span className="text-lg font-bold leading-none">
+                    +
+                  </span>
               Add New Product
             </Link>
           ) : null}
         </section>
 
         {/* ── Row 1: Category chips ── */}
-        <div className="mt-5 -mx-1 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentPage(1);
-              const base = ctxProjectId
-                ? `/dashboard/product-catalogue?projectId=${ctxProjectId}&sectionId=${ctxSectionId}`
-                : `/dashboard/product-catalogue`;
-              router.push(base);
-            }}
-            className={[
-              "shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-              !searchParams.get("category")
-                ? "bg-emerald-900 text-white ring-1 ring-emerald-900/20"
-                : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
-            ].join(" ")}
-          >
-            All
-          </button>
+        <div className="mt-5 -mx-1">
+          <div className="flex items-center gap-4 overflow-x-auto rounded-2xl bg-gray-100 px-4 py-3 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentPage(1);
+                const base = ctxProjectId
+                  ? `/dashboard/product-catalogue?projectId=${ctxProjectId}&sectionId=${ctxSectionId}`
+                  : `/dashboard/product-catalogue`;
+                router.push(base);
+              }}
+              className={[
+                "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
+                !searchParams.get("category")
+                  ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
+                  : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
+              ].join(" ")}
+            >
+              All
+            </button>
 
-          {categories.map((cat) => {
-            const isActive =
-              searchParams.get("category") === (cat.slug ?? cat.id);
-            return (
+            {categories.map((cat) => {
+              const isActive =
+                searchParams.get("category") === (cat.slug ?? cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setCurrentPage(1);
+                    const params = new URLSearchParams();
+                    params.set("category", cat.slug ?? cat.id);
+                    if (ctxProjectId) params.set("projectId", ctxProjectId);
+                    if (ctxSectionId) params.set("sectionId", ctxSectionId);
+                    router.push(
+                      `/dashboard/product-catalogue?${params.toString()}`,
+                    );
+                  }}
+                  className={[
+                    "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
+                    isActive
+                      ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
+                      : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
+                  ].join(" ")}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Row 2: Subcategory chips — shown only when a category is selected ── */}
+        {searchParams.get("category") && (
+          <div className="mt-3 -mx-1">
+            <div className="flex items-center gap-2 overflow-x-auto rounded-2xl bg-gray-100 px-4 py-3 scrollbar-none">
               <button
-                key={cat.id}
                 type="button"
                 onClick={() => {
                   setCurrentPage(1);
                   const params = new URLSearchParams();
-                  params.set("category", cat.slug ?? cat.id);
+                  params.set("category", searchParams.get("category")!);
                   if (ctxProjectId) params.set("projectId", ctxProjectId);
                   if (ctxSectionId) params.set("sectionId", ctxSectionId);
                   router.push(
@@ -1172,78 +1216,55 @@ export default function ProductCataloguePage() {
                   );
                 }}
                 className={[
-                  "shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-                  isActive
-                    ? "bg-emerald-900 text-white ring-1 ring-emerald-900/20"
+                  "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
+                  !searchParams.get("subcategory")
+                    ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
                     : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
                 ].join(" ")}
               >
-                {cat.label}
+                All
               </button>
-            );
-          })}
-        </div>
 
-        {/* ── Row 2: Subcategory chips — shown only when a category is selected ── */}
-        {searchParams.get("category") && (
-          <div className="mt-2 -mx-1 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            <button
-              type="button"
-              onClick={() => {
-                setCurrentPage(1);
-                const params = new URLSearchParams();
-                params.set("category", searchParams.get("category")!);
-                if (ctxProjectId) params.set("projectId", ctxProjectId);
-                if (ctxSectionId) params.set("sectionId", ctxSectionId);
-                router.push(
-                  `/dashboard/product-catalogue?${params.toString()}`,
-                );
-              }}
-              className={[
-                "shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-                !searchParams.get("subcategory")
-                  ? "bg-emerald-900 text-white ring-1 ring-emerald-900/20"
-                  : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
-              ].join(" ")}
-            >
-              All
-            </button>
-
-            {subcategories.length === 0 ? (
-              <span className="shrink-0 rounded-full bg-white px-4 py-2 text-sm font-semibold text-gray-400 ring-1 ring-gray-200 whitespace-nowrap">
-                No subcategories
-              </span>
-            ) : (
-              subcategories.map((sub) => {
-                const isActive =
-                  searchParams.get("subcategory") === (sub.slug ?? sub.id);
-                return (
-                  <button
-                    key={sub.id}
-                    type="button"
-                    onClick={() => {
-                      setCurrentPage(1);
-                      const params = new URLSearchParams();
-                      params.set("category", searchParams.get("category")!);
-                      params.set("subcategory", sub.slug ?? sub.id);
-                      if (ctxProjectId) params.set("projectId", ctxProjectId);
-                      if (ctxSectionId) params.set("sectionId", ctxSectionId);
-                      router.push(
-                        `/dashboard/product-catalogue?${params.toString()}`,
-                      );
-                    }}
-                    className={[
-                      "shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-                      isActive
-                        ? "bg-emerald-900 text-white ring-1 ring-emerald-900/20"
-                        : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
-                    ].join(" ")}
-                  >
-                    {sub.label}
-                  </button>
-                );
-              })
-            )}
+              {isLoadingSubcategories ? (
+                <span className="shrink-0 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-500 ring-1 ring-gray-200 whitespace-nowrap">
+                  Loading...
+                </span>
+              ) : subcategories.length === 0 ? (
+                <span className="shrink-0 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-400 ring-1 ring-gray-200 whitespace-nowrap">
+                  No subcategories
+                </span>
+              ) : (
+                subcategories.map((sub) => {
+                  const isActive =
+                    searchParams.get("subcategory") === (sub.slug ?? sub.id);
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => {
+                        setCurrentPage(1);
+                        const params = new URLSearchParams();
+                        params.set("category", searchParams.get("category")!);
+                        params.set("subcategory", sub.slug ?? sub.id);
+                        if (ctxProjectId) params.set("projectId", ctxProjectId);
+                        if (ctxSectionId) params.set("sectionId", ctxSectionId);
+                        router.push(
+                          `/dashboard/product-catalogue?${params.toString()}`,
+                        );
+                      }}
+                      className={[
+                        "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
+                        isActive
+                          ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
+                          : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
+                      ].join(" ")}
+                    >
+                      {sub.label}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
 
@@ -1445,7 +1466,7 @@ export default function ProductCataloguePage() {
                 className={[
                   isListView
                     ? "grid grid-cols-1 gap-3"
-                    : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3",
+                    : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
                   productsLoading ? "opacity-50" : "",
                 ].join(" ")}
               >
@@ -1711,14 +1732,9 @@ export default function ProductCataloguePage() {
                             </>
                           ) : (
                             <>
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5 fill-none stroke-current"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                              >
-                                <path d="M12 5v14M5 12h14" />
-                              </svg>
+                              <span className="text-lg font-bold leading-none">
+                                +
+                              </span>
                               Add to Project
                             </>
                           )}

@@ -23,7 +23,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { supabase } from "@/lib/supabaseClient";
 import { Copy, Trash2, Pencil } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type UserRole = "admin" | "internal" | "external";
@@ -47,6 +47,7 @@ type Item = {
   product_name: string;
   manufacturer_name: string;
   product_type: string;
+  product_is_archived: boolean;
   tags: string[];
 };
 
@@ -162,7 +163,7 @@ function normalizeItemsForSections(sections: Section[], items: Item[]): Item[] {
   return next;
 }
 
-function matchesSearch(item: Item, needle: string) {
+function matchesSearch(item: Item, needle: string, sectionNotes: string = "") {
   if (!needle) return true;
   const haystack = [
     item.product_name,
@@ -171,6 +172,7 @@ function matchesSearch(item: Item, needle: string) {
     item.tags.join(" "),
     item.client_notes ?? "",
     item.supplier_notes ?? "",
+    sectionNotes,
   ]
     .join(" ")
     .toLowerCase();
@@ -179,8 +181,16 @@ function matchesSearch(item: Item, needle: string) {
 
 export default function ProjectBoardDetailPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
   const projectId = params?.id;
+  const fromExternalBoards = searchParams.get("source") === "external-boards";
+  const backHref = fromExternalBoards
+    ? "/dashboard/external-boards"
+    : "/dashboard/project-board";
+  const backLabel = fromExternalBoards
+    ? "Back to External Boards"
+    : "Back to Projects";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -218,6 +228,9 @@ export default function ProjectBoardDetailPage() {
     Record<string, boolean>
   >({});
   const [lastRfqSent, setLastRfqSent] = useState<string | null>(null);
+  const [showAdminAccessBadge, setShowAdminAccessBadge] = useState(false);
+  const [viewerRole, setViewerRole] = useState<UserRole | null>(null);
+  const [duplicatingToInternal, setDuplicatingToInternal] = useState(false);
 
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
@@ -271,6 +284,7 @@ export default function ProjectBoardDetailPage() {
     }
 
     const role = profile.role;
+    setViewerRole(role);
     const isOwner = project.owner_user_id === currentUser.id;
     const canView =
       role === "admin" ||
@@ -286,12 +300,23 @@ export default function ProjectBoardDetailPage() {
       return;
     }
 
+    // Upsert last_viewed_at (fire and forget)
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token ?? null;
+    if (accessToken) {
+      void fetch(`/api/projects/${projectId}/view`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    }
+
     const editable =
       role === "admin" ||
       (role === "internal" && isOwner && project.project_type === "internal") ||
       (role === "external" && isOwner && project.project_type === "external");
 
     setCanEdit(editable);
+    setShowAdminAccessBadge(role === "admin" && !isOwner && fromExternalBoards);
     setProjectName(project.name);
     setClientName(project.client_name ?? "");
     setInternalRef(project.internal_reference ?? "");
@@ -310,7 +335,7 @@ export default function ProjectBoardDetailPage() {
     }
 
     let resolvedSections = (sectionRows ?? []) as Section[];
-    if (resolvedSections.length === 0) {
+    if (editable && resolvedSections.length === 0) {
       const { data: insertedSection, error: insertSectionError } =
         await supabase
           .from("project_sections")
@@ -345,7 +370,11 @@ export default function ProjectBoardDetailPage() {
       (itemRows as Array<
         Omit<
           Item,
-          "product_name" | "manufacturer_name" | "product_type" | "tags"
+          | "product_name"
+          | "manufacturer_name"
+          | "product_type"
+          | "product_is_archived"
+          | "tags"
         >
       >) ?? [];
     const productIds = Array.from(
@@ -358,6 +387,7 @@ export default function ProjectBoardDetailPage() {
         name: string;
         manufacturer_id: string | null;
         product_type: string | null;
+        is_archived: boolean | null;
       }
     >();
     const tagsByProductId = new Map<string, string[]>();
@@ -366,7 +396,7 @@ export default function ProjectBoardDetailPage() {
     if (productIds.length > 0) {
       const { data: productRows } = await supabase
         .from("products")
-        .select("id, name, manufacturer_id, product_type")
+        .select("id, name, manufacturer_id, product_type, is_archived")
         .in("id", productIds);
 
       for (const product of (productRows ?? []) as Array<{
@@ -374,11 +404,13 @@ export default function ProjectBoardDetailPage() {
         name: string;
         manufacturer_id: string | null;
         product_type: string | null;
+        is_archived: boolean | null;
       }>) {
         productsById.set(product.id, {
           name: product.name,
           manufacturer_id: product.manufacturer_id,
           product_type: product.product_type,
+          is_archived: product.is_archived,
         });
       }
 
@@ -451,6 +483,7 @@ export default function ProjectBoardDetailPage() {
             "Unknown manufacturer")
           : "Unknown manufacturer",
         product_type: product?.product_type ?? "",
+        product_is_archived: Boolean(product?.is_archived),
         tags: tagsByProductId.get(item.product_id) ?? [],
       };
     });
@@ -483,7 +516,7 @@ export default function ProjectBoardDetailPage() {
     setSaving(false);
     setLastSavedAt(Date.now());
     setLoading(false);
-  }, [projectId, router]);
+  }, [fromExternalBoards, projectId, router]);
 
   useEffect(() => {
     void loadData();
@@ -616,6 +649,12 @@ export default function ProjectBoardDetailPage() {
       }
       deletedItemIds.current = [];
 
+      const { error: touchProjectError } = await supabase
+        .from("projects")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", projectId);
+      if (touchProjectError) throw new Error(touchProjectError.message);
+
       // Update sections in-place: swap any tmp IDs → real DB IDs
       setSections(resolvedSections);
 
@@ -676,6 +715,42 @@ export default function ProjectBoardDetailPage() {
   }, [dirty, saving]);
 
   const statusText = saving ? "Saving…" : dirty ? "Unsaved changes" : "Saved";
+  const canDuplicateToInternal =
+    fromExternalBoards && viewerRole === "internal" && !canEdit;
+
+  const handleDuplicateToInternal = useCallback(async () => {
+    if (!projectId || !canDuplicateToInternal || duplicatingToInternal) return;
+
+    setDuplicatingToInternal(true);
+    setError("");
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token ?? null;
+      if (!accessToken) {
+        router.replace("/login");
+        return;
+      }
+
+      const res = await fetch(`/api/projects/${projectId}/duplicate-to-internal`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        projectId?: string;
+        error?: string;
+      };
+
+      if (!res.ok || !payload.projectId) {
+        setError(payload.error ?? "Failed to duplicate project.");
+        return;
+      }
+
+      router.push(`/dashboard/project-board/${payload.projectId}`);
+    } finally {
+      setDuplicatingToInternal(false);
+    }
+  }, [canDuplicateToInternal, duplicatingToInternal, projectId, router]);
 
   const addSection = () => {
     if (!canEdit) return;
@@ -692,6 +767,7 @@ export default function ProjectBoardDetailPage() {
   };
 
   const renameSection = (id: string, name: string) => {
+    if (!canEdit) return;
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
     setDirty(true);
   };
@@ -724,6 +800,7 @@ export default function ProjectBoardDetailPage() {
   };
 
   const updateItem = (id: string, patch: Partial<Item>) => {
+    if (!canEdit) return;
     setItems((prev) =>
       normalizeItemsForSections(
         sections,
@@ -734,6 +811,7 @@ export default function ProjectBoardDetailPage() {
   };
 
   const removeItem = (id: string) => {
+    if (!canEdit) return;
     setItems((prev) => {
       const target = prev.find((item) => item.id === id);
       if (target && !target.id.startsWith("tmp-item-"))
@@ -747,6 +825,7 @@ export default function ProjectBoardDetailPage() {
   };
 
   const duplicateItem = (id: string) => {
+    if (!canEdit) return;
     setItems((prev) => {
       const source = prev.find((item) => item.id === id);
       if (!source) return prev;
@@ -759,16 +838,22 @@ export default function ProjectBoardDetailPage() {
   };
 
   const handleAddItem = (sectionId: string) => {
+    if (!canEdit) return;
     router.push(
       `/dashboard/product-catalogue?projectId=${encodeURIComponent(projectId ?? "")}&sectionId=${encodeURIComponent(sectionId)}`,
     );
   };
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (!canEdit) return;
     setActiveId(event.active.id);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!canEdit) {
+      setActiveId(null);
+      return;
+    }
     const { active, over } = event;
     setActiveId(null);
     if (!over) return;
@@ -883,21 +968,28 @@ export default function ProjectBoardDetailPage() {
       <main className="w-full max-w-[1240px] mx-auto px-4 pb-10 mt-6 space-y-4">
         <p className="text-sm font-medium text-red-200">{error}</p>
         <Link
-          href="/dashboard/project-board"
+          href={backHref}
           className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold text-white"
         >
-          Back to Project Board
+          {backLabel}
         </Link>
       </main>
     );
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
+  const sectionNotesById = new Map(
+    sections.map((section) => [section.id, section.notes ?? ""]),
+  );
+
   const filteredItems = items.filter((item) => {
     const sectionMatch = activeSectionId
       ? item.section_id === activeSectionId
       : true;
-    const searchMatch = searchNeedle ? matchesSearch(item, searchNeedle) : true;
+    const sectionNotes = sectionNotesById.get(item.section_id) ?? "";
+    const searchMatch = searchNeedle
+      ? matchesSearch(item, searchNeedle, sectionNotes)
+      : true;
     return sectionMatch && searchMatch;
   });
 
@@ -916,10 +1008,10 @@ export default function ProjectBoardDetailPage() {
       <main className="mt-6 space-y-4">
         <p className="text-sm font-medium text-red-200">{error}</p>
         <Link
-          href="/dashboard/project-board"
+          href={backHref}
           className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold text-white"
         >
-          Back to Project Board
+          {backLabel}
         </Link>
       </main>
     );
@@ -935,17 +1027,16 @@ export default function ProjectBoardDetailPage() {
     >
       <main className="mt-6 space-y-5">
         {/* ── Header ── */}
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-start">
           <div>
-            <Link
-              href="/dashboard/project-board"
-              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-800/80 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-emerald-700"
-            >
-              ← Back to Projects
-            </Link>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-white">
+            <h1 className="text-3xl font-bold tracking-tight text-white">
               {projectName}
             </h1>
+            {showAdminAccessBadge ? (
+              <span className="mt-2 inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
+                Admin Access
+              </span>
+            ) : null}
             <div className="mt-2 flex flex-wrap gap-6 text-sm">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100/50">
@@ -956,19 +1047,24 @@ export default function ProjectBoardDetailPage() {
                     autoFocus
                     value={clientName}
                     onChange={(e) => {
+                      if (!canEdit) return;
                       setClientName(e.target.value);
                       setDirty(true);
                     }}
                     onBlur={() => setMetaEditing(null)}
+                    disabled={!canEdit}
                     className="mt-1 h-8 w-52 rounded-lg border border-white/20 bg-white/10 px-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
                   />
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setMetaEditing("client")}
+                    onClick={() => {
+                      if (!canEdit) return;
+                      setMetaEditing("client");
+                    }}
                     className="mt-1 text-sm font-medium text-white/90 hover:underline"
                   >
-                    {clientName.trim() || "— Click to add"}
+                    {clientName.trim() || (canEdit ? "— Click to add" : "—")}
                   </button>
                 )}
               </div>
@@ -981,19 +1077,24 @@ export default function ProjectBoardDetailPage() {
                     autoFocus
                     value={internalRef}
                     onChange={(e) => {
+                      if (!canEdit) return;
                       setInternalRef(e.target.value);
                       setDirty(true);
                     }}
                     onBlur={() => setMetaEditing(null)}
+                    disabled={!canEdit}
                     className="mt-1 h-8 w-52 rounded-lg border border-white/20 bg-white/10 px-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
                   />
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setMetaEditing("internal")}
+                    onClick={() => {
+                      if (!canEdit) return;
+                      setMetaEditing("internal");
+                    }}
                     className="mt-1 text-sm font-medium text-white/90 hover:underline"
                   >
-                    {internalRef.trim() || "— Click to add"}
+                    {internalRef.trim() || (canEdit ? "— Click to add" : "—")}
                   </button>
                 )}
               </div>
@@ -1004,16 +1105,38 @@ export default function ProjectBoardDetailPage() {
                 <textarea
                   value={projectNotes}
                   onChange={(e) => {
+                    if (!canEdit) return;
                     setProjectNotes(e.target.value);
                     setDirty(true);
                   }}
                   placeholder="Add project notes..."
                   rows={2}
                   maxLength={1000}
+                  disabled={!canEdit}
                   className="mt-1 w-64 rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-sm text-white placeholder:text-emerald-100/40 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
                 />
               </div>
             </div>
+          </div>
+          <div className="flex items-center gap-2 sm:shrink-0">
+            {canDuplicateToInternal ? (
+              <button
+                type="button"
+                onClick={handleDuplicateToInternal}
+                disabled={duplicatingToInternal}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {duplicatingToInternal
+                  ? "Duplicating..."
+                  : "Duplicate to Internal Project"}
+              </button>
+            ) : null}
+            <Link
+              href={backHref}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-800/80 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-emerald-700"
+            >
+              {backLabel}
+            </Link>
           </div>
         </div>
 
@@ -1088,9 +1211,10 @@ export default function ProjectBoardDetailPage() {
               <button
                 type="button"
                 onClick={addSection}
-                className="w-full flex items-center gap-2 rounded-xl border border-dashed border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-500 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 mb-2"
+                disabled={!canEdit}
+                className="mb-2 w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
               >
-                <span className="flex h-5 w-5 items-center justify-center text-lg leading-none">
+                <span className="inline-flex h-5 w-5 items-center justify-center text-xl font-semibold leading-none text-emerald-700">
                   +
                 </span>
                 Add New Room
@@ -1194,7 +1318,7 @@ export default function ProjectBoardDetailPage() {
                             className="w-full rounded-lg border border-emerald-400 bg-white px-2 py-0.5 text-sm font-semibold text-gray-800 focus:outline-none"
                           />
                         ) : (
-                          <p className="truncate text-sm font-semibold text-gray-800">
+                          <p className="truncate text-sm font-semibold text-emerald-700 hover:text-emerald-600 transition-colors">
                             {section.name}
                           </p>
                         )}
@@ -1256,7 +1380,7 @@ export default function ProjectBoardDetailPage() {
                   onClick={() =>
                     router.push(`/dashboard/pdf-export?projectId=${projectId}`)
                   }
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-gray-200 px-4 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50"
                 >
                   Export
                 </button>
@@ -1282,9 +1406,10 @@ export default function ProjectBoardDetailPage() {
                   onClick={() =>
                     handleAddItem(activeSectionId ?? sections[0]?.id ?? "")
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-full bg-emerald-800 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+                  disabled={!canEdit}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-600"
                 >
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/20 text-[15px] leading-none">
+                  <span className="text-lg font-bold leading-none">
                     +
                   </span>
                   Add Products
@@ -1304,12 +1429,25 @@ export default function ProjectBoardDetailPage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                      <th className="w-8 px-2 py-3" aria-label="Drag" />
-                      <th className="px-5 py-3">Product</th>
-                      <th className="px-5 py-3">Manufacturer</th>
-                      <th className="px-5 py-3">Section</th>
-                      <th className="w-32 px-5 py-3">Qty</th>
-                      <th className="w-24 px-5 py-3 text-right">Actions</th>
+                      <th
+                        className="sticky top-0 z-10 w-8 bg-gray-50 px-2 py-3"
+                        aria-label="Drag"
+                      />
+                      <th className="sticky top-0 z-10 bg-gray-50 px-5 py-3 truncate text-sm text-emerald-700">
+                        Product
+                      </th>
+                      <th className="sticky top-0 z-10 bg-gray-50 px-5 py-3 truncate text-sm text-emerald-700">
+                        Manufacturer
+                      </th>
+                      <th className="sticky top-0 z-10 bg-gray-50 px-5 py-3 truncate text-sm text-emerald-700" >
+                        Section
+                      </th>
+                      <th className="sticky top-0 z-10 w-32 bg-gray-50 px-5 py-3 truncate text-sm text-emerald-700">
+                        Qty
+                      </th>
+                      <th className="sticky top-0 z-10 w-24 bg-gray-50 px-5 py-3 text-right truncate text-sm text-emerald-700">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1330,7 +1468,7 @@ export default function ProjectBoardDetailPage() {
                             key={`section-header-${section.id}`}
                             className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 border-t border-gray-100"
                           >
-                            <td className="px-5 py-3" colSpan={6}>
+                            <td className="px-5 py-3 truncate text-sm font-semibold " colSpan={6} >
                               {section.name}
                             </td>
                           </tr>,
@@ -1344,6 +1482,7 @@ export default function ProjectBoardDetailPage() {
                                 placeholder="Add section notes..."
                                 value={section.notes ?? ""}
                                 onChange={(e) => {
+                                  if (!canEdit) return;
                                   setSections((prev) =>
                                     prev.map((s) =>
                                       s.id === section.id
@@ -1353,6 +1492,7 @@ export default function ProjectBoardDetailPage() {
                                   );
                                   setDirty(true);
                                 }}
+                                disabled={!canEdit}
                                 className="w-full bg-transparent border-none px-0 py-0 text-xs text-gray-500 focus:outline-none focus:ring-0"
                               />
                             </td>
@@ -1388,9 +1528,16 @@ export default function ProjectBoardDetailPage() {
                                   </div>
                                 </td>
                                 <td className="px-5 py-3.5">
-                                  <p className="truncate text-sm font-semibold text-gray-800">
-                                    {item.product_name}
-                                  </p>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <p className="truncate text-sm font-semibold text-emerald-700 hover:text-emerald-600 transition-colors">
+                                      {item.product_name}
+                                    </p>
+                                    {item.product_is_archived ? (
+                                      <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
+                                        Archived product
+                                      </span>
+                                    ) : null}
+                                  </div>
                                   <p className="mt-0.5 truncate text-xs text-gray-400">
                                     {item.product_type}
                                   </p>

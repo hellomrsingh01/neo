@@ -114,6 +114,7 @@ export default function ProjectBoardPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<ProjectRow | null>(null);
   const [form, setForm] = useState<ProjectFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -278,10 +279,6 @@ export default function ProjectBoardPage() {
   };
 
   const handleDelete = async (project: ProjectRow) => {
-    if (!window.confirm("Delete this project? This cannot be undone.")) {
-      return;
-    }
-
     const accessToken = await getAccessToken();
     if (!accessToken) {
       router.push("/");
@@ -299,6 +296,7 @@ export default function ProjectBoardPage() {
       error?: string;
     };
     setDeletingId(null);
+    setProjectToDelete(null);
 
     if (!response.ok) {
       setError(payload.error || "Failed to delete project.");
@@ -325,7 +323,7 @@ export default function ProjectBoardPage() {
           onClick={openCreateModal}
           className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
         >
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15">
+          <span className="text-lg font-bold leading-none">
             +
           </span>
           Add New Project
@@ -406,7 +404,7 @@ export default function ProjectBoardPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            onClick={() => handleDelete(project)}
+                            onClick={() => setProjectToDelete(project)}
                             disabled={deletingId === project.id}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-60"
                             aria-label="Delete project"
@@ -521,6 +519,38 @@ export default function ProjectBoardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {projectToDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-[18px] bg-white p-5 text-gray-900 shadow-2xl ring-1 ring-black/10">
+            <h3 className="text-lg font-semibold text-emerald-950">
+              Delete project?
+            </h3>
+            <p className="mt-2 text-sm font-medium text-gray-600">
+              This action will permanently delete the project and cannot be
+              undone.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setProjectToDelete(null)}
+                disabled={deletingId === projectToDelete.id}
+                className="h-10 rounded-[12px] bg-gray-100 px-4 text-sm font-semibold text-gray-700 ring-1 ring-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete(projectToDelete)}
+                disabled={deletingId === projectToDelete.id}
+                className="h-10 rounded-[12px] bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+              >
+                {deletingId === projectToDelete.id ? "Deleting..." : "Delete"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

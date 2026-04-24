@@ -10,6 +10,9 @@ type ExternalProject = {
   client_name: string | null;
   created_at: string;
   updated_at: string;
+  owner_user_id: string;
+  project_type: "internal" | "external" | null;
+  can_edit: boolean;
   item_count: number;
   last_viewed_at: string | null;
 };
@@ -89,9 +92,9 @@ export default function ExternalBoardsPage() {
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             External Project Boards
           </h1>
-          <p className="mt-1 text-sm font-medium text-emerald-100/75">
+          {/* <p className="mt-1 text-sm font-medium text-emerald-100/75">
             Read-only view of all external client boards
-          </p>
+          </p> */}
         </div>
       </section>
 
@@ -161,7 +164,7 @@ export default function ExternalBoardsPage() {
                         type="button"
                         onClick={() =>
                           router.push(
-                            `/dashboard/external-boards/${project.id}`,
+                            `/dashboard/project-board/${project.id}?source=external-boards`,
                           )
                         }
                         className="inline-flex h-8 items-center rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-emerald-800"
