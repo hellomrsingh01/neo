@@ -92,7 +92,6 @@ export async function GET(req: Request) {
       supabase
         .from("project_views")
         .select("project_id, last_viewed_at")
-        .eq("user_id", userId)
         .in("project_id", projectIds),
     ]);
 
@@ -109,7 +108,10 @@ export async function GET(req: Request) {
       project_id: string;
       last_viewed_at: string;
     }>) {
-      lastViewedMap.set(row.project_id, row.last_viewed_at);
+      const existing = lastViewedMap.get(row.project_id);
+      if (!existing || row.last_viewed_at > existing) {
+        lastViewedMap.set(row.project_id, row.last_viewed_at);
+      }
     }
 
     const projects = rows.map((p) => ({

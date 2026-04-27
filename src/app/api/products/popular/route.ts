@@ -10,6 +10,8 @@ type Body = {
   selectedCategories?: string[];
   selectedSuppliers?: string[];
   selectedTags?: string[];
+  selectedSubcategoryId?: string | null;
+  subcategoryId?: string | null;
 };
 
 const getAuthedUserId = async (token: string) => {
@@ -51,6 +53,8 @@ export async function POST(req: Request) {
     const selectedCategories = (body?.selectedCategories ?? []).filter(Boolean);
     const selectedSuppliers = (body?.selectedSuppliers ?? []).filter(Boolean);
     const selectedTags = (body?.selectedTags ?? []).filter(Boolean);
+    const selectedSubcategoryId =
+      (body?.selectedSubcategoryId ?? body?.subcategoryId ?? "").trim() || null;
 
     const supabase = getServiceClient();
 
@@ -65,6 +69,7 @@ export async function POST(req: Request) {
 
     if (selectedCategories.length > 0) productsQ = productsQ.in("category_id", selectedCategories);
     if (selectedSuppliers.length > 0) productsQ = productsQ.in("manufacturer_id", selectedSuppliers);
+    if (selectedSubcategoryId) productsQ = productsQ.eq("subcategory_id", selectedSubcategoryId);
 
     if (selectedTags.length > 0) {
       const { data: tagJoin, error: tagErr } = await supabase

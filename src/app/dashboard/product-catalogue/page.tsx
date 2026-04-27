@@ -51,6 +51,9 @@ type ProductRow = {
   product_images: ProductImageRow[] | null;
 };
 
+const getSafeDescription = (description: string | null) =>
+  description ? description.slice(0, 150) : null;
+
 function getPageModel(current: number, total: number): Array<number | "..."> {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
 
@@ -880,6 +883,10 @@ export default function ProductCataloguePage() {
           const { data: sessionData } = await supabase.auth.getSession();
           const accessToken = sessionData.session?.access_token ?? null;
           if (!accessToken) throw new Error("Unauthorized");
+          const activePopularSubSlug = searchParams.get("subcategory");
+          const matchedPopularSub = activePopularSubSlug
+            ? subcategories.find((s) => (s.slug ?? s.id) === activePopularSubSlug)
+            : null;
 
           const popularRes = await fetch("/api/products/popular", {
             method: "POST",
@@ -894,6 +901,7 @@ export default function ProductCataloguePage() {
               selectedCategories,
               selectedSuppliers,
               selectedTags,
+              selectedSubcategoryId: matchedPopularSub?.id ?? null,
             }),
           });
 
@@ -1136,7 +1144,7 @@ export default function ProductCataloguePage() {
           {!roleLoading && isAdmin ? (
             <Link
               href="/admin/products/new"
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
             >
               <span className="text-lg font-bold leading-none">
                     +
@@ -1306,13 +1314,14 @@ export default function ProductCataloguePage() {
                       <input
                         type="checkbox"
                         checked={selectedSuppliers.includes(s.id)}
-                        onChange={() =>
+                        onChange={() => {
+                          setCurrentPage(1);
                           toggleSelection(
                             s.id,
                             selectedSuppliers,
                             setSelectedSuppliers,
-                          )
-                        }
+                          );
+                        }}
                         className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
                       />
                       <span>{s.label}</span>
@@ -1339,9 +1348,10 @@ export default function ProductCataloguePage() {
                       <input
                         type="checkbox"
                         checked={selectedTags.includes(t.id)}
-                        onChange={() =>
-                          toggleSelection(t.id, selectedTags, setSelectedTags)
-                        }
+                        onChange={() => {
+                          setCurrentPage(1);
+                          toggleSelection(t.id, selectedTags, setSelectedTags);
+                        }}
                         className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
                       />
                       <span>{t.label}</span>
@@ -1493,6 +1503,7 @@ export default function ProductCataloguePage() {
                               href={p.productUrl}
                               target="_blank"
                               rel="noreferrer"
+                              className="absolute inset-0"
                             >
                               {p.image ? (
                                 <Image
@@ -1544,7 +1555,7 @@ export default function ProductCataloguePage() {
                           ) : null}
                           {p.description ? (
                             <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                              {p.description}
+                              {getSafeDescription(p.description)}
                             </p>
                           ) : null}
                         </div>
@@ -1605,7 +1616,7 @@ export default function ProductCataloguePage() {
                     ) : (
                       <div className="flex h-full flex-col p-4">
                         <div className="relative overflow-hidden rounded-[14px] bg-[#eef3f2] ring-1 ring-black/5">
-                          <div className="relative aspect-4/3 w-full">
+                          <div className="relative aspect-square w-full">
                             {p.productUrl ? (
                               <a
                                 href={p.productUrl}
@@ -1701,7 +1712,7 @@ export default function ProductCataloguePage() {
                           ) : null}
                           {p.description ? (
                             <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                              {p.description}
+                              {getSafeDescription(p.description)}
                             </p>
                           ) : null}
                         </div>
@@ -1810,8 +1821,8 @@ export default function ProductCataloguePage() {
               <button
                 type="button"
                 onClick={() => setGalleryOpen(false)}
-                className="inline-flex h-9 items-center justify-center rounded-full bg-gray-100 px-4 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
-              >
+                className="inline-flex h-9 items-center justify-center rounded-full bg-emerald-900 px-4 text-xs font-semibold text-white ring-1 ring-emerald-900/20 hover:bg-emerald-800"
+                >
                 Close
               </button>
             </div>
