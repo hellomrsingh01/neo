@@ -261,6 +261,7 @@ export async function POST(req: Request) {
         .select("id, name")
         .eq("owner_user_id", requesterId)
         .is("archived_at", null)
+        .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<{ id: string; name: string }>();

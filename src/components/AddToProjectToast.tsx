@@ -52,7 +52,7 @@
        <div className="mx-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-[18px] bg-emerald-950 px-4 py-3 text-white shadow-[0_18px_50px_rgba(0,0,0,0.35)] ring-1 ring-white/10">
          <div className="min-w-0">
            <div className="text-sm font-semibold">
-             Added to{" "}
+             Added to:{" "}
              <span className="font-bold text-emerald-200">{projectName}</span>
            </div>
            <div className="mt-0.5 text-xs font-medium text-emerald-100/80">
