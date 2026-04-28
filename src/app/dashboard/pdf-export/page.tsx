@@ -23,6 +23,67 @@ import {
 } from "@/components/pdf-export/ProjectPdfDocuments";
 import { EmailPdfModal } from "@/components/pdf-export/EmailPdfModal";
 
+const getImageExtensionFromUrl = (url: string) => {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const pathname = parsed.pathname.toLowerCase();
+    const match = pathname.match(/\.([a-z0-9]+)$/i);
+    return match?.[1] ?? "";
+  } catch {
+    const clean = url.split("?")[0].toLowerCase();
+    const match = clean.match(/\.([a-z0-9]+)$/i);
+    return match?.[1] ?? "";
+  }
+};
+
+const blobToObjectUrlImage = (blob: Blob) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const image = new window.Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Failed to decode image blob"));
+    };
+    image.src = objectUrl;
+  });
+
+const convertImageUrlToPdfSafeSrc = async (url: string): Promise<string | null> => {
+  try {
+    const response = await fetch(url, { cache: "force-cache" });
+    if (!response.ok) return url;
+
+    const blob = await response.blob();
+    const contentType = blob.type.toLowerCase();
+    const ext = getImageExtensionFromUrl(url);
+    const isWebp = contentType.includes("image/webp") || ext === "webp";
+    if (!isWebp) return url;
+
+    const image = await blobToObjectUrlImage(blob);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return url;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return url;
+
+    // Use a solid white background because JPEG does not preserve transparency.
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+
+    return canvas.toDataURL("image/jpeg", 0.92);
+  } catch {
+    return url;
+  }
+};
+
 export default function PdfExportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -441,7 +502,12 @@ export default function PdfExportPage() {
               const publicUrl = supabase.storage
                 .from("product-images")
                 .getPublicUrl(primary.file_path).data.publicUrl;
-              next.set(pid, publicUrl || null);
+              if (!publicUrl) {
+                next.set(pid, null);
+                continue;
+              }
+              const pdfSafeImageSrc = await convertImageUrlToPdfSafeSrc(publicUrl);
+              next.set(pid, pdfSafeImageSrc);
             }
           }
         }
