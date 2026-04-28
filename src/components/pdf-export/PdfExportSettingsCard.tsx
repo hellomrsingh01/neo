@@ -21,9 +21,9 @@ export function PdfExportSettingsCard({
   onDownload,
   onPrint,
   activeTab,
-  manufacturers,
-  supplierName,
-  onSupplierNameChange,
+  suppliers,
+  selectedSupplierId,
+  onSupplierChange,
   includeRfqSectionNotes,
   onIncludeRfqSectionNotesChange,
   supplierNotes,
@@ -34,7 +34,7 @@ export function PdfExportSettingsCard({
   itemsForUrlToggles,
   urlEnabledByItemId,
   onToggleItemUrl,
-  rfqSentMap,
+  rfqSentMapById,
 }: {
   settings: PdfExportSettings;
   onChange: (patch: Partial<PdfExportSettings>) => void;
@@ -42,9 +42,9 @@ export function PdfExportSettingsCard({
   onDownload?: () => void;
   onPrint?: () => void;
   activeTab: "supplier" | "client";
-  manufacturers: string[];
-  supplierName: string;
-  onSupplierNameChange: (name: string) => void;
+  suppliers: Array<{ id: string; name: string }>;
+  selectedSupplierId: string;
+  onSupplierChange: (id: string) => void;
   includeRfqSectionNotes: boolean;
   onIncludeRfqSectionNotesChange: (next: boolean) => void;
   supplierNotes: string;
@@ -55,7 +55,7 @@ export function PdfExportSettingsCard({
   itemsForUrlToggles: Array<{ id: string; name: string }>;
   urlEnabledByItemId: Record<string, boolean>;
   onToggleItemUrl: (itemId: string, next: boolean) => void;
-  rfqSentMap: Record<string, string>;
+  rfqSentMapById: Record<string, string>;
 }) {
   return (
     <aside className="rounded-[18px] bg-white p-5 shadow-[0_14px_44px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
@@ -246,16 +246,16 @@ export function PdfExportSettingsCard({
                 Manufacturer
               </label>
               <select
-                value={supplierName}
-                onChange={(e) => onSupplierNameChange(e.target.value)}
+                value={selectedSupplierId}
+                onChange={(e) => onSupplierChange(e.target.value)}
                 className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[12px] font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50"
               >
-                {manufacturers.length === 0 ? (
+                {suppliers.length === 0 ? (
                   <option value="">No manufacturers</option>
                 ) : (
-                  manufacturers.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
+                  suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
                     </option>
                   ))
                 )}
@@ -292,7 +292,7 @@ export function PdfExportSettingsCard({
               <button
                 type="button"
                 onClick={onSaveSupplierNotes}
-                disabled={savingSupplierNotes || !supplierName}
+                disabled={savingSupplierNotes || !selectedSupplierId}
                 className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-[12px] font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
               >
                 {savingSupplierNotes ? "Saving..." : "Save Supplier Notes"}
@@ -303,7 +303,7 @@ export function PdfExportSettingsCard({
               <button
                 type="button"
                 onClick={onGenerateSupplier}
-                disabled={!supplierName}
+                disabled={!selectedSupplierId}
                 className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-900 px-4 text-[12px] font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25 disabled:opacity-50"
               >
                 <FileText className="h-4 w-4" aria-hidden />
@@ -311,7 +311,7 @@ export function PdfExportSettingsCard({
               </button>
 
               {/* RFQ sent badge */}
-              {supplierName && rfqSentMap[supplierName] && (
+              {selectedSupplierId && rfqSentMapById[selectedSupplierId] && (
                 <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
                   <svg
                     className="h-3 w-3"
@@ -325,7 +325,7 @@ export function PdfExportSettingsCard({
                     />
                   </svg>
                   RFQ sent{" "}
-                  {new Date(rfqSentMap[supplierName]).toLocaleDateString(
+                  {new Date(rfqSentMapById[selectedSupplierId]).toLocaleDateString(
                     "en-GB",
                     {
                       day: "2-digit",

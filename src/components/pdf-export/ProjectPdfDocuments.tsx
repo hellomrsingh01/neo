@@ -29,10 +29,79 @@ export type ClientPdfSettings = {
 
 export type TemplateStyle = "Professional" | "Minimal";
 
+const A4_PAGE_HEIGHT = 841.89;
+const PAGE_TOP_PADDING = 28;
+const PAGE_BOTTOM_SAFE_PADDING = 64;
+const SECTION_TOP_MARGIN = 14;
+const SECTION_TITLE_HEIGHT = 20;
+const TABLE_HEADER_HEIGHT = 22;
+const CHUNK_SAFETY_BUFFER = 10;
+const PAGINATION_TOP_FUDGE = 8;
+const NOTE_BLOCK_BASE_HEIGHT = 24;
+const NOTE_LINE_HEIGHT = 10;
+const MAX_NOTE_CHARS_PER_LINE = 74;
+const MAX_DETAIL_CHARS_PER_LINE = 34;
+const MAX_NAME_CHARS_PER_LINE = 28;
+const MAX_MANUFACTURER_CHARS_PER_LINE = 24;
+const MAX_PRODUCT_TYPE_CHARS_PER_LINE = 28;
+const MAX_URL_CHARS_PER_LINE = 34;
+
+function estimateLineCount(text: string, maxCharsPerLine: number): number {
+  const normalized = text.trim();
+  if (!normalized) return 0;
+  const explicitLines = normalized.split(/\r?\n/);
+  return explicitLines.reduce((total, line) => {
+    const len = line.trim().length;
+    if (!len) return total + 1;
+    return total + Math.max(1, Math.ceil(len / maxCharsPerLine));
+  }, 0);
+}
+
+function estimateSectionNotesHeight(notes: string | null | undefined): number {
+  if (!notes?.trim()) return 0;
+  const lines = estimateLineCount(notes, MAX_NOTE_CHARS_PER_LINE);
+  return NOTE_BLOCK_BASE_HEIGHT + lines * NOTE_LINE_HEIGHT + 8;
+}
+
+function paginateSectionRows<T>(
+  rows: T[],
+  estimateRowHeight: (row: T) => number,
+  options: { maxChunkHeight: number; chunkBaseHeight: number; safetyBuffer?: number },
+): T[][] {
+  if (rows.length === 0) return [];
+  const chunks: T[][] = [];
+  let currentChunk: T[] = [];
+  let usedRowsHeight = 0;
+  const safeLimit = options.maxChunkHeight - (options.safetyBuffer ?? CHUNK_SAFETY_BUFFER);
+
+  for (const row of rows) {
+    const rowHeight = Math.max(estimateRowHeight(row), 20);
+    const projectedChunkHeight = options.chunkBaseHeight + usedRowsHeight + rowHeight;
+    const wouldOverflow = projectedChunkHeight > safeLimit;
+    if (currentChunk.length > 0 && wouldOverflow) {
+      chunks.push(currentChunk);
+      currentChunk = [row];
+      usedRowsHeight = rowHeight;
+      continue;
+    }
+    currentChunk.push(row);
+    usedRowsHeight += rowHeight;
+  }
+
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+  return chunks;
+}
+
 function createStyles(templateStyle: TemplateStyle) {
   const minimal = templateStyle === "Minimal";
   return StyleSheet.create({
-    page: { padding: 28, fontSize: 10, fontFamily: "Helvetica", color: "#111827" },
+    page: {
+      padding: 28,
+      paddingBottom: PAGE_BOTTOM_SAFE_PADDING,
+      fontSize: 10,
+      fontFamily: "Helvetica",
+      color: "#111827",
+    },
     header: { marginBottom: 16 },
     title: { fontSize: 18, fontWeight: 700 },
     metaRow: { marginTop: 6, flexDirection: "row", justifyContent: "space-between", gap: 12 },
@@ -56,7 +125,7 @@ function createStyles(templateStyle: TemplateStyle) {
     colExtra: { width: "20%" },
     noteBlock: { marginTop: 6, padding: 8, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 6 },
     imageCell: { marginTop: 6, flexDirection: "row", alignItems: "center", gap: 8 },
-    productImage: { width: 48, height: 48, objectFit: "cover", borderRadius: 6 },
+    productImage: { width: 44, height: 44, objectFit: "cover", borderRadius: 6 },
     placeholder: { fontSize: 9, color: minimal ? "#111827" : "#6B7280" },
     cellText: { fontSize: 9, color: "#111827" },
     footerWrap: { position: "absolute", left: 28, right: 28, bottom: 18, alignItems: "center" },
@@ -100,6 +169,33 @@ export function ClientProjectPdfDocument({
   const includeImages = minimal ? false : settings.includeProductImages;
   const showLogo = minimal ? false : includeLogo;
   const orderedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order);
+  const pageContentHeight = A4_PAGE_HEIGHT - PAGE_TOP_PADDING - PAGE_BOTTOM_SAFE_PADDING;
+
+  const estimateClientRowHeight = (item: ExportItem) => {
+    const nameLines = estimateLineCount(item.product_name, MAX_NAME_CHARS_PER_LINE);
+    const manufacturerLines = estimateLineCount(
+      item.manufacturer_name,
+      MAX_MANUFACTURER_CHARS_PER_LINE,
+    );
+    const notesLines =
+      settings.includeItemNotes && item.client_notes
+        ? estimateLineCount(item.client_notes, MAX_DETAIL_CHARS_PER_LINE)
+        : 0;
+    const url = urlByProductId.get(item.product_id) ?? null;
+    const producturl = item.producturl ?? url;
+    const urlEnabled = settings.includeProductUrls ? urlEnabledByItemId[item.id] !== false : false;
+    const urlLines =
+      settings.includeProductUrls && urlEnabled && producturl
+        ? estimateLineCount(producturl, MAX_URL_CHARS_PER_LINE)
+        : 0;
+
+    const textDrivenHeight = 14 + nameLines * 8 + manufacturerLines * 7 + notesLines * 7 + urlLines * 7;
+    // Account for cell padding/borders and image block margins to keep chunks safely within a page.
+    const rowChromeHeight = 6;
+    const imageBlockHeight = includeImages ? 48 : 0;
+    const estimated = textDrivenHeight + rowChromeHeight;
+    return includeImages ? Math.max(60, Math.max(estimated, imageBlockHeight)) : Math.max(30, estimated);
+  };
 
   return (
     <Document>
@@ -130,76 +226,145 @@ export function ClientProjectPdfDocument({
             .filter((i) => i.section_id === section.id)
             .sort((a, b) => a.sort_order - b.sort_order);
 
-          return (
-            <View key={section.id} style={styles.section}>
-              <View style={styles.sectionTitleWrap}>
-                <Text style={styles.sectionTitle}>{section.name}</Text>
-              </View>
+          const sectionNotesHeight =
+            settings.includeSectionNotes && section.notes?.trim()
+              ? estimateSectionNotesHeight(section.notes)
+              : 0;
+          const firstChunkBaseHeight =
+            SECTION_TOP_MARGIN + SECTION_TITLE_HEIGHT + TABLE_HEADER_HEIGHT + sectionNotesHeight;
+          const continuedChunkBaseHeight =
+            SECTION_TOP_MARGIN + SECTION_TITLE_HEIGHT + TABLE_HEADER_HEIGHT;
+          const maxChunkHeight = pageContentHeight - PAGINATION_TOP_FUDGE;
+          const clientChunks =
+            sectionItems.length === 0
+              ? []
+              : (() => {
+                  const chunks: ExportItem[][] = [];
+                  let remaining = [...sectionItems];
+                  const first = paginateSectionRows(remaining, estimateClientRowHeight, {
+                    maxChunkHeight,
+                    chunkBaseHeight: firstChunkBaseHeight,
+                    safetyBuffer: CHUNK_SAFETY_BUFFER,
+                  })[0];
+                  if (!first || first.length === 0) return chunks;
+                  chunks.push(first);
+                  remaining = remaining.slice(first.length);
+                  if (remaining.length > 0) {
+                    chunks.push(
+                      ...paginateSectionRows(remaining, estimateClientRowHeight, {
+                        maxChunkHeight,
+                        chunkBaseHeight: continuedChunkBaseHeight,
+                        safetyBuffer: CHUNK_SAFETY_BUFFER,
+                      }),
+                    );
+                  }
+                  return chunks;
+                })();
 
-              {settings.includeSectionNotes && section.notes?.trim() ? (
-                <View style={[styles.noteBlock, { marginTop: 0, marginBottom: 8 }]}>
-                  <Text style={{ fontWeight: 700 }}>Section Notes</Text>
-                  <Text style={styles.subtle}>{section.notes}</Text>
+          return (
+            <View key={section.id}>
+              {sectionItems.length === 0 ? (
+                <View style={styles.section} minPresenceAhead={24}>
+                  <View style={styles.sectionTitleWrap} minPresenceAhead={24}>
+                    <Text style={styles.sectionTitle}>{section.name}</Text>
+                  </View>
+                  {settings.includeSectionNotes && section.notes?.trim() ? (
+                    <View style={[styles.noteBlock, { marginTop: 0, marginBottom: 8 }]}>
+                      <Text style={{ fontWeight: 700 }}>Section Notes</Text>
+                      <Text style={styles.subtle}>{section.notes}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.table}>
+                    <View style={styles.row} wrap={false}>
+                      <Text style={[styles.th, styles.colName]}>Product</Text>
+                      <Text style={[styles.th, styles.colMan]}>Manufacturer</Text>
+                      <Text style={[styles.th, styles.colQty]}>Qty</Text>
+                      <Text style={[styles.th, styles.colExtra]}>
+                        {settings.includeItemNotes || settings.includeProductUrls ? "Details" : ""}
+                      </Text>
+                    </View>
+                    <View style={[styles.row, styles.rowLast]}>
+                      <Text style={[styles.td, styles.colName, styles.subtle]}>—</Text>
+                      <Text style={[styles.td, styles.colMan, styles.subtle]}>—</Text>
+                      <Text style={[styles.td, styles.colQty, styles.subtle]}>—</Text>
+                      <Text style={[styles.td, styles.colExtra, styles.subtle]}>Empty section</Text>
+                    </View>
+                  </View>
                 </View>
               ) : null}
 
-              <View style={styles.table}>
-                <View style={styles.row}>
-                  <Text style={[styles.th, styles.colName]}>Product</Text>
-                  <Text style={[styles.th, styles.colMan]}>Manufacturer</Text>
-                  <Text style={[styles.th, styles.colQty]}>Qty</Text>
-                  <Text style={[styles.th, styles.colExtra]}>
-                    {settings.includeItemNotes || settings.includeProductUrls ? "Details" : ""}
-                  </Text>
-                </View>
-
-                {sectionItems.length === 0 ? (
-                  <View style={[styles.row, styles.rowLast]}>
-                    <Text style={[styles.td, styles.colName, styles.subtle]}>—</Text>
-                    <Text style={[styles.td, styles.colMan, styles.subtle]}>—</Text>
-                    <Text style={[styles.td, styles.colQty, styles.subtle]}>—</Text>
-                    <Text style={[styles.td, styles.colExtra, styles.subtle]}>Empty section</Text>
+              {clientChunks.map((chunkItems, chunkIdx) => (
+                <View
+                  key={`${section.id}-chunk-${chunkIdx}`}
+                  style={styles.section}
+                  minPresenceAhead={24}
+                >
+                  <View style={styles.sectionTitleWrap} minPresenceAhead={24}>
+                    <Text style={styles.sectionTitle}>
+                      {chunkIdx === 0 ? section.name : `${section.name} (continued)`}
+                    </Text>
                   </View>
-                ) : (
-                  sectionItems.map((item, idx) => {
-                    const isLast = idx === sectionItems.length - 1;
-                    const imageUrl = imageByProductId.get(item.product_id) ?? null;
-                    const url = urlByProductId.get(item.product_id) ?? null;
-                    const urlEnabled = settings.includeProductUrls ? urlEnabledByItemId[item.id] !== false : false;
-                    const producturl = item.producturl ?? url;
+                  {chunkIdx === 0 && settings.includeSectionNotes && section.notes?.trim() ? (
+                    <View style={[styles.noteBlock, { marginTop: 0, marginBottom: 8 }]}>
+                      <Text style={{ fontWeight: 700 }}>Section Notes</Text>
+                      <Text style={styles.subtle}>{section.notes}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.table}>
+                    <View style={styles.row} wrap={false}>
+                      <Text style={[styles.th, styles.colName]}>Product</Text>
+                      <Text style={[styles.th, styles.colMan]}>Manufacturer</Text>
+                      <Text style={[styles.th, styles.colQty]}>Qty</Text>
+                      <Text style={[styles.th, styles.colExtra]}>
+                        {settings.includeItemNotes || settings.includeProductUrls ? "Details" : ""}
+                      </Text>
+                    </View>
+                    {chunkItems.map((item, idx) => {
+                      const isLast = idx === chunkItems.length - 1;
+                      const imageUrl = imageByProductId.get(item.product_id) ?? null;
+                      const url = urlByProductId.get(item.product_id) ?? null;
+                      const urlEnabled = settings.includeProductUrls
+                        ? urlEnabledByItemId[item.id] !== false
+                        : false;
+                      const producturl = item.producturl ?? url;
 
-                    return (
-                      <View key={item.id} style={isLast ? [styles.row, styles.rowLast] : styles.row}>
-                        <View style={[styles.td, styles.colName]}>
-                          <Text style={{ fontWeight: 700 }}>{item.product_name}</Text>
-                          {includeImages ? (
-                            <View style={styles.imageCell}>
-                              {imageUrl ? (
-                                // eslint-disable-next-line jsx-a11y/alt-text
-                                <Image src={imageUrl} style={styles.productImage} />
-                              ) : (
-                                <Text style={styles.placeholder}>Image not available</Text>
-                              )}
-                            </View>
-                          ) : null}
+                      return (
+                        <View
+                          key={item.id}
+                          wrap={false}
+                          style={isLast ? [styles.row, styles.rowLast] : styles.row}
+                        >
+                          <View style={[styles.td, styles.colName]}>
+                            <Text style={{ fontWeight: 700 }}>{item.product_name}</Text>
+                            {includeImages ? (
+                              <View style={styles.imageCell}>
+                                {imageUrl ? (
+                                  // eslint-disable-next-line jsx-a11y/alt-text
+                                  <Image src={imageUrl} style={styles.productImage} />
+                                ) : (
+                                  <Text style={styles.placeholder}>Image not available</Text>
+                                )}
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={[styles.td, styles.colMan]}>{item.manufacturer_name}</Text>
+                          <Text style={[styles.td, styles.colQty]}>{String(item.quantity)}</Text>
+                          <View style={[styles.td, styles.colExtra]}>
+                            {settings.includeItemNotes && item.client_notes ? (
+                              <Text style={styles.cellText}>{item.client_notes}</Text>
+                            ) : null}
+                            {settings.includeProductUrls && urlEnabled && producturl ? (
+                              <Link src={producturl}>
+                                <Text style={{ fontSize: 8, color: "#0ea5e9" }}>{producturl}</Text>
+                              </Link>
+                            ) : null}
+                          </View>
                         </View>
-                        <Text style={[styles.td, styles.colMan]}>{item.manufacturer_name}</Text>
-                        <Text style={[styles.td, styles.colQty]}>{String(item.quantity)}</Text>
-                        <View style={[styles.td, styles.colExtra]}>
-                          {settings.includeItemNotes && item.client_notes ? (
-                            <Text style={styles.cellText}>{item.client_notes}</Text>
-                          ) : null}
-                          {settings.includeProductUrls && urlEnabled && producturl ? (
-                            <Link src={producturl}>
-                              <Text style={{ fontSize: 8, color: "#0ea5e9" }}>{producturl}</Text>
-                            </Link>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })
-                )}
-              </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </View>
           );
         })}
@@ -249,6 +414,21 @@ export function SupplierRfqPdfDocument({
 }) {
   const styles = createStyles(templateStyle);
   const orderedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order);
+  const pageContentHeight = A4_PAGE_HEIGHT - PAGE_TOP_PADDING - PAGE_BOTTOM_SAFE_PADDING;
+
+  const estimateSupplierRowHeight = (item: ExportItem) => {
+    const nameLines = estimateLineCount(item.product_name, MAX_NAME_CHARS_PER_LINE);
+    const manufacturerLines = estimateLineCount(
+      item.manufacturer_name,
+      MAX_MANUFACTURER_CHARS_PER_LINE,
+    );
+    const productTypeLines = estimateLineCount(item.product_type || "", MAX_PRODUCT_TYPE_CHARS_PER_LINE);
+    const note = (item.supplier_notes?.trim() || item.client_notes?.trim() || "").trim();
+    const noteLines = note ? estimateLineCount(note, MAX_DETAIL_CHARS_PER_LINE) : 1;
+    const textDrivenHeight = 14 + nameLines * 8 + manufacturerLines * 7 + productTypeLines * 7 + noteLines * 7;
+    const rowChromeHeight = 6;
+    return Math.max(32, textDrivenHeight + rowChromeHeight);
+  };
 
   return (
     <Document>
@@ -280,46 +460,96 @@ export function SupplierRfqPdfDocument({
             .sort((a, b) => a.sort_order - b.sort_order);
           if (sectionItems.length === 0) return null;
 
+          const sectionNotesHeight =
+            includeSectionNotes && section.notes?.trim()
+              ? estimateSectionNotesHeight(section.notes)
+              : 0;
+          const firstChunkBaseHeight =
+            SECTION_TOP_MARGIN + SECTION_TITLE_HEIGHT + TABLE_HEADER_HEIGHT + sectionNotesHeight;
+          const continuedChunkBaseHeight =
+            SECTION_TOP_MARGIN + SECTION_TITLE_HEIGHT + TABLE_HEADER_HEIGHT;
+          const maxChunkHeight = pageContentHeight - PAGINATION_TOP_FUDGE;
+          const supplierChunks = (() => {
+            const chunks: ExportItem[][] = [];
+            let remaining = [...sectionItems];
+            const first = paginateSectionRows(remaining, estimateSupplierRowHeight, {
+              maxChunkHeight,
+              chunkBaseHeight: firstChunkBaseHeight,
+              safetyBuffer: CHUNK_SAFETY_BUFFER,
+            })[0];
+            if (!first || first.length === 0) return chunks;
+            chunks.push(first);
+            remaining = remaining.slice(first.length);
+            if (remaining.length > 0) {
+              chunks.push(
+                ...paginateSectionRows(remaining, estimateSupplierRowHeight, {
+                  maxChunkHeight,
+                  chunkBaseHeight: continuedChunkBaseHeight,
+                  safetyBuffer: CHUNK_SAFETY_BUFFER,
+                }),
+              );
+            }
+            return chunks;
+          })();
+
           return (
-            <View key={section.id} style={styles.section}>
-              <View style={styles.sectionTitleWrap}>
-                <Text style={styles.sectionTitle}>{section.name}</Text>
-              </View>
+            <View key={section.id}>
+              {supplierChunks.map((chunkItems, chunkIdx) => (
+                <View
+                  key={`${section.id}-chunk-${chunkIdx}`}
+                  style={styles.section}
+                  minPresenceAhead={24}
+                >
+                  <View style={styles.sectionTitleWrap} minPresenceAhead={24}>
+                    <Text style={styles.sectionTitle}>
+                      {chunkIdx === 0 ? section.name : `${section.name} (continued)`}
+                    </Text>
+                  </View>
 
-              {includeSectionNotes && section.notes?.trim() ? (
-                <View style={[styles.noteBlock, { marginTop: 0, marginBottom: 8 }]}>
-                  <Text style={{ fontWeight: 700 }}>Section Notes</Text>
-                  <Text style={styles.subtle}>{section.notes}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.table}>
-                <View style={styles.row}>
-                  <Text style={[styles.th, styles.colName]}>Product</Text>
-                  <Text style={[styles.th, styles.colMan]}>Manufacturer</Text>
-                  <Text style={[styles.th, styles.colQty]}>Qty</Text>
-                  <Text style={[styles.th, styles.colExtra]}>Notes</Text>
-                </View>
-
-                {sectionItems.map((item, idx) => {
-                  const isLast = idx === sectionItems.length - 1;
-                  const note = (item.supplier_notes?.trim() || item.client_notes?.trim() || "").trim();
-
-                  return (
-                    <View key={item.id} style={isLast ? [styles.row, styles.rowLast] : styles.row}>
-                      <View style={[styles.td, styles.colName]}>
-                        <Text style={{ fontWeight: 700 }}>{item.product_name}</Text>
-                        <Text style={[styles.subtle, { fontSize: 9 }]}>{item.product_type || ""}</Text>
-                      </View>
-                      <Text style={[styles.td, styles.colMan]}>{item.manufacturer_name}</Text>
-                      <Text style={[styles.td, styles.colQty]}>{String(item.quantity)}</Text>
-                      <View style={[styles.td, styles.colExtra]}>
-                        {note ? <Text style={styles.cellText}>{note}</Text> : <Text style={styles.subtle}>—</Text>}
-                      </View>
+                  {chunkIdx === 0 && includeSectionNotes && section.notes?.trim() ? (
+                    <View style={[styles.noteBlock, { marginTop: 0, marginBottom: 8 }]}>
+                      <Text style={{ fontWeight: 700 }}>Section Notes</Text>
+                      <Text style={styles.subtle}>{section.notes}</Text>
                     </View>
-                  );
-                })}
-              </View>
+                  ) : null}
+
+                  <View style={styles.table}>
+                    <View style={styles.row} wrap={false}>
+                      <Text style={[styles.th, styles.colName]}>Product</Text>
+                      <Text style={[styles.th, styles.colMan]}>Manufacturer</Text>
+                      <Text style={[styles.th, styles.colQty]}>Qty</Text>
+                      <Text style={[styles.th, styles.colExtra]}>Notes</Text>
+                    </View>
+
+                    {chunkItems.map((item, idx) => {
+                      const isLast = idx === chunkItems.length - 1;
+                      const note = (
+                        item.supplier_notes?.trim() ||
+                        item.client_notes?.trim() ||
+                        ""
+                      ).trim();
+
+                      return (
+                        <View
+                          key={item.id}
+                          wrap={false}
+                          style={isLast ? [styles.row, styles.rowLast] : styles.row}
+                        >
+                          <View style={[styles.td, styles.colName]}>
+                            <Text style={{ fontWeight: 700 }}>{item.product_name}</Text>
+                            <Text style={[styles.subtle, { fontSize: 9 }]}>{item.product_type || ""}</Text>
+                          </View>
+                          <Text style={[styles.td, styles.colMan]}>{item.manufacturer_name}</Text>
+                          <Text style={[styles.td, styles.colQty]}>{String(item.quantity)}</Text>
+                          <View style={[styles.td, styles.colExtra]}>
+                            {note ? <Text style={styles.cellText}>{note}</Text> : <Text style={styles.subtle}>—</Text>}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </View>
           );
         })}

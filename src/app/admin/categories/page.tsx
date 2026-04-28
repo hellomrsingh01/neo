@@ -94,9 +94,9 @@ const slugify = (value: string) =>
   value
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+    .replaceAll(/[^a-z0-9\s-]/g, "")
+    .replaceAll(/\s+/g, "-")
+    .replaceAll(/-+/g, "-");
 
 const emptyCategoryForm: CategoryForm = {
   name: "",
