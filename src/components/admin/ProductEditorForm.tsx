@@ -41,6 +41,7 @@ type ProductImageRow = {
 type Manufacturer = {
   id: string;
   name: string;
+  is_archived?: boolean | null;
 };
 
 type Category = {
@@ -182,7 +183,7 @@ export default function ProductEditorForm({
       await Promise.all([
         supabase
           .from("manufacturers")
-          .select("id, name")
+          .select("id, name, is_archived")
           .eq("is_archived", false)
           .order("sort_order", { ascending: true }),
         supabase
@@ -253,6 +254,23 @@ export default function ProductEditorForm({
       popular_flag: Boolean(productData.popular_flag),
       is_archived: Boolean(productData.is_archived),
     });
+
+    if (productData.manufacturer_id) {
+      const { data: currentManufacturer } = await supabase
+        .from("manufacturers")
+        .select("id, name, is_archived")
+        .eq("id", productData.manufacturer_id)
+        .maybeSingle<Manufacturer>();
+
+      if (currentManufacturer?.is_archived) {
+        setManufacturers((prev) => {
+          if (prev.some((manufacturer) => manufacturer.id === currentManufacturer.id)) {
+            return prev;
+          }
+          return [...prev, currentManufacturer];
+        });
+      }
+    }
 
     const [tagLinksRes, imageRes] = await Promise.all([
       supabase
@@ -847,7 +865,9 @@ export default function ProductEditorForm({
                       <option value="">Select manufacturer</option>
                       {manufacturers.map((manufacturer) => (
                         <option key={manufacturer.id} value={manufacturer.id}>
-                          {manufacturer.name}
+                          {manufacturer.is_archived
+                            ? `${manufacturer.name} (Archived)`
+                            : manufacturer.name}
                         </option>
                       ))}
                     </select>

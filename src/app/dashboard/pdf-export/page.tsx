@@ -88,6 +88,9 @@ export default function PdfExportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId") ?? "";
+  const projectBoardHref = projectId
+    ? `/dashboard/project-board/${encodeURIComponent(projectId)}`
+    : "/dashboard/project-board";
 
   const [loading, setLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -115,25 +118,43 @@ export default function PdfExportPage() {
     Record<string, boolean>
   >({});
 
-  const manufacturersInProject = useMemo(() => {
-    const set = new Set<string>();
+  const supplierOptions = useMemo(() => {
+    const byId = new Map<string, string>();
     for (const item of items) {
-      if (item.manufacturer_name) set.add(item.manufacturer_name);
+      if (item.manufacturer_id && item.manufacturer_name) {
+        byId.set(item.manufacturer_id, item.manufacturer_name);
+      }
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [items]);
-
-  const [supplierName, setSupplierName] = useState<string>("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const selectedSupplierName =
+    supplierOptions.find((supplier) => supplier.id === selectedSupplierId)?.name ??
+    "";
   const [includeRfqSectionNotes, setIncludeRfqSectionNotes] = useState(true);
   const [supplierNotes, setSupplierNotes] = useState("");
   const [savingSupplierNotes, setSavingSupplierNotes] = useState(false);
-  const [rfqSentMap, setRfqSentMap] = useState<Record<string, string>>({});
+  const [rfqSentMapById, setRfqSentMapById] = useState<Record<string, string>>(
+    {},
+  );
 
   useEffect(() => {
-    if (!supplierName && manufacturersInProject.length > 0) {
-      setSupplierName(manufacturersInProject[0]);
+    if (
+      selectedSupplierId &&
+      supplierOptions.some((supplier) => supplier.id === selectedSupplierId)
+    ) {
+      return;
     }
-  }, [manufacturersInProject, supplierName]);
+    if (supplierOptions.length > 0) {
+      setSelectedSupplierId(supplierOptions[0].id);
+      return;
+    }
+    if (selectedSupplierId) {
+      setSelectedSupplierId("");
+    }
+  }, [selectedSupplierId, supplierOptions]);
 
   const productIds = useMemo(
     () => Array.from(new Set(items.map((i) => i.product_id))),
@@ -244,12 +265,11 @@ export default function PdfExportPage() {
         manufacturer_id: string | null;
         manufacturers: { name: string } | null;
       }>) {
-        const name = (log.manufacturers as { name: string } | null)?.name;
-        if (name && !map[name]) {
-          map[name] = log.sent_at;
+        if (log.manufacturer_id && !map[log.manufacturer_id]) {
+          map[log.manufacturer_id] = log.sent_at;
         }
       }
-      setRfqSentMap(map);
+      setRfqSentMapById(map);
     }
 
     const role = profile.role;
@@ -416,6 +436,7 @@ export default function PdfExportPage() {
       return {
         ...item,
         quantity: Math.max(1, item.quantity ?? 1),
+        manufacturer_id: product?.manufacturer_id ?? null,
         product_name: product?.name ?? "Unknown product",
         manufacturer_name: product?.manufacturer_id
           ? (manufacturerById.get(product.manufacturer_id) ??
@@ -521,21 +542,9 @@ export default function PdfExportPage() {
     };
   }, [productIds]);
 
-  const resolveManufacturerId = useCallback(async (name: string) => {
-    const { data, error: err } = await supabase
-      .from("manufacturers")
-      .select("id, name")
-      .eq("name", name)
-      .maybeSingle<{ id: string; name: string }>();
-    if (err || !data?.id) return null;
-    return data.id;
-  }, []);
-
   const loadSupplierNotes = useCallback(
-    async (name: string) => {
-      if (!projectId || !name) return;
-      const manufacturerId = await resolveManufacturerId(name);
-      if (!manufacturerId) return;
+    async (manufacturerId: string) => {
+      if (!projectId || !manufacturerId) return;
       const { data } = await supabase
         .from("project_supplier_notes")
         .select("notes")
@@ -544,26 +553,28 @@ export default function PdfExportPage() {
         .maybeSingle<{ notes: string | null }>();
       setSupplierNotes(data?.notes ?? "");
     },
-    [projectId, resolveManufacturerId],
+    [projectId],
   );
 
   useEffect(() => {
-    void loadSupplierNotes(supplierName);
+    if (!selectedSupplierId) {
+      setSupplierNotes("");
+      return;
+    }
+    void loadSupplierNotes(selectedSupplierId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supplierName]);
+  }, [selectedSupplierId]);
 
   const saveSupplierNotes = useCallback(async () => {
-    if (!projectId || !supplierName) return;
+    if (!projectId || !selectedSupplierId) return;
     setSavingSupplierNotes(true);
     try {
-      const manufacturerId = await resolveManufacturerId(supplierName);
-      if (!manufacturerId) throw new Error("Could not resolve manufacturer");
       const { error: upsertError } = await supabase
         .from("project_supplier_notes")
         .upsert(
           {
             project_id: projectId,
-            manufacturer_id: manufacturerId,
+            manufacturer_id: selectedSupplierId,
             notes: supplierNotes.trim() || null,
           },
           { onConflict: "project_id,manufacturer_id" },
@@ -572,7 +583,7 @@ export default function PdfExportPage() {
     } finally {
       setSavingSupplierNotes(false);
     }
-  }, [projectId, resolveManufacturerId, supplierName, supplierNotes]);
+  }, [projectId, selectedSupplierId, supplierNotes]);
 
   const formatDDMMYYYY = useCallback((date: Date) => {
     const dd = String(date.getDate()).padStart(2, "0");
@@ -595,10 +606,10 @@ export default function PdfExportPage() {
       (projectName || "Project").replace(/[\\/:*?"<>|]/g, "").trim() ||
       "Project";
     const safeSupplier =
-      (supplierName || "Supplier").replace(/[\\/:*?"<>|]/g, "").trim() ||
+      (selectedSupplierName || "Supplier").replace(/[\\/:*?"<>|]/g, "").trim() ||
       "Supplier";
     return `Neo_${safeProject}_${safeSupplier}_${date}.pdf`;
-  }, [formatDDMMYYYY, projectName, supplierName]);
+  }, [formatDDMMYYYY, projectName, selectedSupplierName]);
 
   useEffect(() => {
     setClientSettings({
@@ -650,7 +661,9 @@ export default function PdfExportPage() {
   ]);
 
   const supplierDoc = useMemo(() => {
-    const rfqItems = items.filter((i) => i.manufacturer_name === supplierName);
+    const rfqItems = items.filter(
+      (i) => i.manufacturer_id === selectedSupplierId,
+    );
     const sectionsWithItems = sections.filter((s) =>
       rfqItems.some((i) => i.section_id === s.id),
     );
@@ -659,7 +672,7 @@ export default function PdfExportPage() {
         projectName={projectName}
         clientName={clientName}
         dateLabel={new Date().toLocaleDateString("en-GB")}
-        supplierName={supplierName}
+        supplierName={selectedSupplierName}
         sections={sectionsWithItems}
         items={rfqItems}
         includeSectionNotes={includeRfqSectionNotes}
@@ -673,7 +686,8 @@ export default function PdfExportPage() {
     items,
     projectName,
     sections,
-    supplierName,
+    selectedSupplierId,
+    selectedSupplierName,
     supplierNotes,
     templateStyle,
   ]);
@@ -835,13 +849,8 @@ export default function PdfExportPage() {
 
         // Get manufacturer id for RFQ logs
         let manufacturerId: string | null = null;
-        if (isRfq && supplierName) {
-          const { data: mfr } = await supabase
-            .from("manufacturers")
-            .select("id")
-            .eq("name", supplierName)
-            .single();
-          manufacturerId = mfr?.id ?? null;
+        if (isRfq && selectedSupplierId) {
+          manufacturerId = selectedSupplierId;
         }
 
         const res = await fetch("/api/send-email", {
@@ -884,7 +893,7 @@ export default function PdfExportPage() {
       clientFileName,
       projectId,
       supplierFileName,
-      supplierName,
+      selectedSupplierId,
     ],
   );
 
@@ -916,6 +925,14 @@ export default function PdfExportPage() {
         <div className="flex items-center gap-3 sm:pt-1">
           <button
             type="button"
+            onClick={() => router.push(projectBoardHref)}
+            disabled={!projectId}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Back to Project
+          </button>
+          <button
+            type="button"
             onClick={handleRegenerate}
             disabled={loading || regenerating || !projectId}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25"
@@ -937,7 +954,7 @@ export default function PdfExportPage() {
             disabled={
               loading ||
               !projectId ||
-              (activeTab === "supplier" && !supplierName)
+              (activeTab === "supplier" && !selectedSupplierId)
             }
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-900 px-4 text-xs font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25"
           >
@@ -963,11 +980,11 @@ export default function PdfExportPage() {
               setEmailCc("");
 
               // Prefill To + Subject from manufacturer profile for RFQ
-              if (activeTab === "supplier" && supplierName) {
+              if (activeTab === "supplier" && selectedSupplierId) {
                 const { data: mfr } = await supabase
                   .from("manufacturers")
                   .select("default_rfq_email, default_rfq_subject_template")
-                  .eq("name", supplierName)
+                  .eq("id", selectedSupplierId)
                   .single<{
                     default_rfq_email: string | null;
                     default_rfq_subject_template: string | null;
@@ -979,7 +996,7 @@ export default function PdfExportPage() {
                     ? mfr.default_rfq_subject_template
                         .replace("{project_name}", projectName)
                         .replace("{client_name}", clientName)
-                        .replace("{supplier_name}", supplierName)
+                        .replace("{supplier_name}", selectedSupplierName)
                     : emailSubject, 
                 );
               } else {
@@ -996,11 +1013,11 @@ export default function PdfExportPage() {
           onDownload={handleDownloadPdf}
           onPrint={handlePrint}
           activeTab={activeTab}
-          manufacturers={manufacturersInProject}
-          supplierName={supplierName}
-          onSupplierNameChange={(name) => {
-            setSupplierName(name);
-            void loadSupplierNotes(name);
+          suppliers={supplierOptions}
+          selectedSupplierId={selectedSupplierId}
+          onSupplierChange={(supplierId) => {
+            setSelectedSupplierId(supplierId);
+            void loadSupplierNotes(supplierId);
           }}
           includeRfqSectionNotes={includeRfqSectionNotes}
           onIncludeRfqSectionNotesChange={setIncludeRfqSectionNotes}
@@ -1008,7 +1025,7 @@ export default function PdfExportPage() {
           onSupplierNotesChange={setSupplierNotes}
           onSaveSupplierNotes={() => void saveSupplierNotes()}
           savingSupplierNotes={savingSupplierNotes}
-          rfqSentMap={rfqSentMap}
+          rfqSentMapById={rfqSentMapById}
           onGenerateSupplier={() => {
             void (async () => {
               const blob = await buildSupplierPdfBlob();

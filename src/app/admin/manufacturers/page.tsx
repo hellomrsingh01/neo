@@ -320,26 +320,18 @@ export default function AdminManufacturersPage() {
     isArchived: boolean,
   ) => {
     setSaving(true);
-    const { error: updateError } = await supabase
-      .from("manufacturers")
-      .update({ is_archived: isArchived })
-      .eq("id", manufacturer.id);
+    const { error: updateError } = await supabase.rpc(
+      "archive_manufacturer_with_products",
+      {
+        p_manufacturer_id: manufacturer.id,
+        p_is_archived: isArchived,
+      },
+    );
     setSaving(false);
 
     if (updateError) {
       alert(updateError.message);
       return;
-    }
-
-    const { error: productsArchiveError } = await supabase
-      .from("products")
-      .update({ is_archived: isArchived })
-      .eq("manufacturer_id", manufacturer.id);
-
-    if (productsArchiveError) {
-      alert(
-        `Manufacturer ${isArchived ? "archived" : "unarchived"}, but product update failed. Products may need manual updates. Error: ${productsArchiveError.message}`,
-      );
     }
 
     await loadManufacturers();

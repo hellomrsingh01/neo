@@ -34,6 +34,7 @@ type ProductRowRaw = {
 type ManufacturerOption = {
   id: string;
   name: string;
+  is_archived: boolean | null;
 };
 
 type CategoryOption = {
@@ -104,7 +105,7 @@ export default function AdminProductsPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("manufacturers")
-        .select("id, name")
+        .select("id, name, is_archived")
         .order("sort_order", { ascending: true }),
       supabase.from("categories").select("id, name").order("sort_order", { ascending: true }),
       supabase.from("subcategories").select("id, name, category_id").order("sort_order", { ascending: true }),
@@ -288,7 +289,9 @@ export default function AdminProductsPage() {
       }
 
       const manufacturerByName = new Map(
-        manufacturers.map((m) => [m.name.trim().toLowerCase(), m.id]),
+        manufacturers
+          .filter((m) => !m.is_archived)
+          .map((m) => [m.name.trim().toLowerCase(), m.id]),
       );
       const categoryByName = new Map(
         categories.map((c) => [c.name.trim().toLowerCase(), c.id]),
