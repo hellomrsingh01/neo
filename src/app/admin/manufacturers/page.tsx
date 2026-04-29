@@ -60,11 +60,11 @@ const slugify = (value: string) =>
   value
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+    .replaceAll(/[^a-z0-9\s-]/g, "")
+    .replaceAll(/\s+/g, "-")
+    .replaceAll(/-+/g, "-");
 
-function DragHandleIcon({ className }: { className?: string }) {
+function DragHandleIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -417,8 +417,8 @@ export default function AdminManufacturersPage() {
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [pendingAction]);
 
   if (!adminChecked || !isAdmin) {

@@ -51,8 +51,93 @@ type ProductRow = {
   product_images: ProductImageRow[] | null;
 };
 
+type CategoryRow = { id: string; name: string; slug: string | null };
+type ManufacturerRow = { id: string; name: string | null };
+type TagRow = { id: string; name: string; slug: string | null };
+type SubcategoryRow = { id: string; name: string; slug: string | null };
+
 const getSafeDescription = (description: string | null) =>
   description ? description.slice(0, 150) : null;
+
+function getProductImageData(productImages: ProductImageRow[] | null) {
+  const imageUrls = (productImages ?? [])
+    .map((img) =>
+      img.file_path
+        ? supabase.storage
+            .from("product-images")
+            .getPublicUrl(img.file_path).data.publicUrl
+        : null,
+    )
+    .filter((u): u is string => Boolean(u));
+
+  const primary = (productImages ?? []).find((img) => img.is_primary) ?? null;
+  const image = primary?.file_path
+    ? supabase.storage
+        .from("product-images")
+        .getPublicUrl(primary.file_path).data.publicUrl
+    : (imageUrls[0] ?? null);
+
+  return { image, imageUrls };
+}
+
+function mapProductRowToProduct(row: ProductRow, idx: number): Product {
+  const { image, imageUrls } = getProductImageData(row.product_images);
+
+  return {
+    id: row.id,
+    name: row.name,
+    subtext: row.manufacturers?.[0]?.name || "",
+    productType: row.product_type,
+    description: row.short_description,
+    image,
+    galleryImages: imageUrls,
+    productUrl: row.product_url,
+    createdAt: row.created_at,
+    isWishlisted: idx % 2 === 0,
+  };
+}
+
+const mapCategoryRows = (cats: CategoryRow[] | null | undefined): Category[] =>
+  (cats ?? []).map((c) => ({
+    id: c.id,
+    label: c.name,
+    slug: c.slug as string | undefined,
+  }));
+
+const mapSupplierRows = (
+  mans: ManufacturerRow[] | null | undefined,
+): Supplier[] =>
+  (mans ?? []).map((m) => ({ id: m.id, label: m.name as string }));
+
+const mapTagRows = (tagRows: TagRow[] | null | undefined): Tag[] =>
+  (tagRows ?? []).map((t) => ({
+    id: t.id,
+    label: t.name,
+    slug: t.slug as string | undefined,
+  }));
+
+const findCategoryByKey = (
+  cats: CategoryRow[] | null | undefined,
+  categoryKey: string,
+): CategoryRow | undefined =>
+  (cats ?? []).find((c) => c.slug === categoryKey || c.id === categoryKey);
+
+const fetchSubcategoriesForCategory = async (categoryId: string) => {
+  const { data: subRows } = await supabase
+    .from("subcategories")
+    .select("id, name, slug")
+    .eq("category_id", categoryId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  return (
+    (subRows as SubcategoryRow[] | null | undefined)?.map((s) => ({
+      id: s.id,
+      label: s.name,
+      slug: s.slug as string | undefined,
+    })) ?? []
+  );
+};
 
 function getPageModel(current: number, total: number): Array<number | "..."> {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -79,7 +164,7 @@ function getPageModel(current: number, total: number): Array<number | "..."> {
 function Icon({
   name,
   className,
-}: {
+}: Readonly<{
   name:
     | "search"
     | "plus"
@@ -91,7 +176,7 @@ function Icon({
     | "chevronLeft"
     | "chevronRight";
   className?: string;
-}) {
+}>) {
   const common = "stroke-current fill-none";
 
   if (name === "search") {
@@ -282,6 +367,398 @@ function Icon({
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+type PaginationProps = {
+  className?: string;
+  showingStart: number;
+  showingEnd: number;
+  totalProducts: number;
+  currentPage: number;
+  totalPages: number;
+  pageModel: Array<number | "...">;
+  onPageChange: React.Dispatch<React.SetStateAction<number>>;
+};
+
+type ProductImageAreaProps = {
+  product: Product;
+  isListView: boolean;
+  openGallery: (images: string[], startIndex: number) => void;
+  addedProductIds: Set<string>;
+  addingProductIds: Set<string>;
+  handleHeartClick: (productId: string) => Promise<void>;
+};
+
+function ProductImageArea({
+  product,
+  isListView,
+  openGallery,
+  addedProductIds,
+  addingProductIds,
+  handleHeartClick,
+}: Readonly<ProductImageAreaProps>) {
+  const listImageOrPlaceholder = product.image ? (
+    <Image
+      src={product.image}
+      alt={product.name}
+      fill
+      sizes="80px"
+      className="object-cover"
+    />
+  ) : (
+    <div className="absolute inset-0 bg-gray-200" />
+  );
+
+  const gridImageOrPlaceholder = product.image ? (
+    <Image
+      src={product.image}
+      alt={product.name}
+      fill
+      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+      className="object-cover"
+    />
+  ) : (
+    <div className="absolute inset-0 bg-gray-200" />
+  );
+
+  if (isListView) {
+    const listMedia = product.productUrl ? (
+      <a
+        href={product.productUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="absolute inset-0"
+      >
+        {listImageOrPlaceholder}
+      </a>
+    ) : (
+      listImageOrPlaceholder
+    );
+
+    return (
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[10px] bg-[#eef3f2] ring-1 ring-black/5">
+        {listMedia}
+      </div>
+    );
+  }
+
+  const gridMedia = product.productUrl ? (
+    <a 
+      href={product.productUrl}
+      target="_blank" rel="noreferrer"   
+      className="relative block h-full w-full"
+    >
+      {gridImageOrPlaceholder}
+    </a>
+  ) : (
+    gridImageOrPlaceholder
+  );
+
+  return (
+    <div className="relative overflow-hidden rounded-[14px] bg-[#eef3f2] ring-1 ring-black/5">
+      <div className="relative aspect-square w-full">{gridMedia}</div>
+      <button
+        type="button"
+        onClick={() => void handleHeartClick(product.id)}
+        className={[
+          "absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 shadow-sm transition-colors hover:bg-white",
+          addedProductIds.has(product.id) ? "text-emerald-700" : "",
+          addingProductIds.has(product.id) ? "opacity-60" : "",
+        ].join(" ")}
+        aria-label="Add to project"
+        disabled={addingProductIds.has(product.id)}
+      >
+        <Icon
+          name="heart"
+          className={[
+            "h-4.5 w-4.5",
+            addedProductIds.has(product.id) ? "fill-emerald-700/15" : "",
+          ].join(" ")}
+        />
+      </button>
+
+      {(product.galleryImages?.length ?? 0) > 1 ? (
+        <button
+          type="button"
+          onClick={() => openGallery(product.galleryImages ?? [], 0)}
+          className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 shadow-sm transition-colors hover:bg-white"
+          aria-label="Open gallery"
+          title="Gallery"
+        >
+          <Icon name="grid" className="h-4.5 w-4.5" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+type ProductAddButtonProps = {
+  product: Product;
+  isListView: boolean;
+  addedProductIds: Set<string>;
+  addingProductIds: Set<string>;
+  handleHeartClick: (productId: string) => Promise<void>;
+};
+
+function ProductAddButton({
+  product,
+  isListView,
+  addedProductIds,
+  addingProductIds,
+  handleHeartClick,
+}: Readonly<ProductAddButtonProps>) {
+  if (!isListView) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleHeartClick(product.id)}
+      disabled={addingProductIds.has(product.id)}
+      className={[
+        "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
+        addedProductIds.has(product.id)
+          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+          : "bg-emerald-900 text-white ring-emerald-900/20 hover:bg-emerald-800",
+        addingProductIds.has(product.id) ? "opacity-60" : "",
+      ].join(" ")}
+      aria-label="Add to project"
+    >
+      {addedProductIds.has(product.id) ? (
+        <>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-3.5 w-3.5 fill-none stroke-current"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          Added
+        </>
+      ) : (
+        <>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-3.5 w-3.5 fill-none stroke-current"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add
+        </>
+      )}
+    </button>
+  );
+}
+
+type ProductCardProps = {
+  product: Product;
+  isListView: boolean;
+  addedProductIds: Set<string>;
+  addingProductIds: Set<string>;
+  handleHeartClick: (productId: string) => Promise<void>;
+  openGallery: (images: string[], startIndex: number) => void;
+};
+
+function ProductDetailsBlock({ product }: Readonly<{ product: Product }>) {
+  return (
+    <>
+      {product.productUrl ? (
+        <h3 className="text-sm font-semibold text-emerald-950">
+          <a href={product.productUrl} target="_blank" rel="noreferrer">
+            {product.name}
+          </a>
+        </h3>
+      ) : (
+        <h3 className="text-sm font-semibold text-emerald-950">{product.name}</h3>
+      )}
+      <p className="mt-1 text-xs font-semibold text-gray-500">{product.subtext}</p>
+      {product.productType ? (
+        <p className="mt-1 text-xs font-medium text-gray-500">
+          {product.productType}
+        </p>
+      ) : null}
+      {product.description ? (
+        <p className="mt-2 text-xs leading-relaxed text-gray-500">
+          {getSafeDescription(product.description)}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function ProductCard({
+  product,
+  isListView,
+  addedProductIds,
+  addingProductIds,
+  handleHeartClick,
+  openGallery,
+}: Readonly<ProductCardProps>) {
+  return (
+    <article className="rounded-[18px] bg-white ring-1 ring-gray-200/80 shadow-[0_14px_40px_rgba(0,0,0,0.10)]">
+      {isListView ? (
+        <div className="flex items-start gap-3 p-4">
+          <ProductImageArea
+            product={product}
+            isListView={isListView}
+            openGallery={openGallery}
+            addedProductIds={addedProductIds}
+            addingProductIds={addingProductIds}
+            handleHeartClick={handleHeartClick}
+          />
+          <div className="min-w-0 flex-1">
+            <ProductDetailsBlock product={product} />
+          </div>
+          {(product.galleryImages?.length ?? 0) > 1 ? (
+            <button
+              type="button"
+              onClick={() => openGallery(product.galleryImages ?? [], 0)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 shadow-sm transition-colors hover:bg-white"
+              aria-label="Open gallery"
+              title="Gallery"
+            >
+              <Icon name="grid" className="h-4.5 w-4.5" />
+            </button>
+          ) : null}
+          <ProductAddButton
+            product={product}
+            isListView={isListView}
+            addedProductIds={addedProductIds}
+            addingProductIds={addingProductIds}
+            handleHeartClick={handleHeartClick}
+          />
+        </div>
+      ) : (
+        <div className="flex h-full flex-col p-4">
+          <ProductImageArea
+            product={product}
+            isListView={isListView}
+            openGallery={openGallery}
+            addedProductIds={addedProductIds}
+            addingProductIds={addingProductIds}
+            handleHeartClick={handleHeartClick}
+          />
+
+          <div className="mt-4 flex-1">
+            <ProductDetailsBlock product={product} />
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleHeartClick(product.id)}
+            disabled={addingProductIds.has(product.id)}
+            className={[
+              "mt-10 inline-flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-semibold transition-colors",
+              addedProductIds.has(product.id)
+                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                : "bg-emerald-900 text-white hover:bg-emerald-800",
+              addingProductIds.has(product.id) ? "opacity-60" : "",
+            ].join(" ")}
+          >
+            {addedProductIds.has(product.id) ? (
+              <>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5 fill-none stroke-current"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                Added to Project
+              </>
+            ) : (
+              <>
+                <span className="text-lg font-bold leading-none">+</span>{" "}
+                Add to Project
+              </>
+            )}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function Pagination({
+  className = "",
+  showingStart,
+  showingEnd,
+  totalProducts,
+  currentPage,
+  totalPages,
+  pageModel,
+  onPageChange,
+}: Readonly<PaginationProps>) {
+  return (
+    <div
+      className={[
+        "flex flex-col gap-3 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between",
+        className,
+      ].join(" ")}
+    >
+      <div className="text-xs font-semibold text-gray-500">
+        Showing {showingStart}-{showingEnd} of {totalProducts} results
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange((prev) => Math.max(1, prev - 1))}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          aria-label="Previous page"
+          disabled={currentPage <= 1}
+        >
+          <Icon name="chevronLeft" className="h-4.5 w-4.5" />
+        </button>
+
+        {pageModel.map((entry, idx) =>
+          entry === "..." ? (
+            <span
+              key={`ellipsis-${pageModel[idx - 1]}-${pageModel[idx + 1]}`}
+              className="px-2 text-xs font-semibold text-gray-500"
+              aria-hidden="true"
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={entry}
+              type="button"
+              onClick={() => onPageChange(entry)}
+              className={[
+                "inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
+                entry === currentPage
+                  ? "bg-emerald-900 text-white ring-emerald-900/20"
+                  : "bg-gray-100 text-gray-700 ring-gray-200 hover:bg-gray-50",
+              ].join(" ")}
+              aria-current={entry === currentPage ? "page" : undefined}
+            >
+              {entry}
+            </button>
+          ),
+        )}
+
+        <span className="text-xs font-semibold text-gray-500">
+          Page {currentPage} of {totalPages}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => onPageChange((prev) => Math.min(totalPages, prev + 1))}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          aria-label="Next page"
+          disabled={currentPage >= totalPages}
+        >
+          <Icon name="chevronRight" className="h-4.5 w-4.5" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -482,73 +959,6 @@ export default function ProductCataloguePage() {
   const showingEnd =
     totalProducts === 0 ? 0 : Math.min(currentPage * pageSize, totalProducts);
 
-  const Pagination = ({ className = "" }: { className?: string }) => (
-    <div
-      className={[
-        "flex flex-col gap-3 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between",
-        className,
-      ].join(" ")}
-    >
-      <div className="text-xs font-semibold text-gray-500">
-        Showing {showingStart}-{showingEnd} of {totalProducts} results
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          aria-label="Previous page"
-          disabled={currentPage <= 1}
-        >
-          <Icon name="chevronLeft" className="h-4.5 w-4.5" />
-        </button>
-
-        {pageModel.map((entry, idx) =>
-          entry === "..." ? (
-            <span
-              key={`ellipsis-${idx}`}
-              className="px-2 text-xs font-semibold text-gray-500"
-              aria-hidden="true"
-            >
-              …
-            </span>
-          ) : (
-            <button
-              key={entry}
-              type="button"
-              onClick={() => setCurrentPage(entry)}
-              className={[
-                "inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
-                entry === currentPage
-                  ? "bg-emerald-900 text-white ring-emerald-900/20"
-                  : "bg-gray-100 text-gray-700 ring-gray-200 hover:bg-gray-50",
-              ].join(" ")}
-              aria-current={entry === currentPage ? "page" : undefined}
-            >
-              {entry}
-            </button>
-          ),
-        )}
-
-        <span className="text-xs font-semibold text-gray-500">
-          Page {currentPage} of {totalPages}
-        </span>
-
-        <button
-          type="button"
-          onClick={() =>
-            setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-          }
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          aria-label="Next page"
-          disabled={currentPage >= totalPages}
-        >
-          <Icon name="chevronRight" className="h-4.5 w-4.5" />
-        </button>
-      </div>
-    </div>
-  );
-
   const openGallery = (images: string[], startIndex = 0) => {
     setGalleryImages(images);
     setGalleryIndex(Math.max(0, Math.min(startIndex, images.length - 1)));
@@ -583,13 +993,8 @@ export default function ProductCataloguePage() {
     const loadFilters = async () => {
       setFiltersLoading(true);
       setFiltersError(false);
-      if (activeCategoryKey) {
-        setIsLoadingSubcategories(true);
-        setSubcategories([]);
-      } else {
-        setIsLoadingSubcategories(false);
-        setSubcategories([]);
-      }
+      setIsLoadingSubcategories(Boolean(activeCategoryKey));
+      setSubcategories([]);
       try {
         const [
           { data: cats, error: catsErr },
@@ -613,27 +1018,14 @@ export default function ProductCataloguePage() {
         ]);
 
         if (activeCategoryKey) {
-          const matchedCat = cats?.find(
-            (c) => c.slug === activeCategoryKey || c.id === activeCategoryKey,
+          const matchedCat = findCategoryByKey(
+            cats as CategoryRow[] | null | undefined,
+            activeCategoryKey,
           );
-          if (matchedCat) {
-            const { data: subRows } = await supabase
-              .from("subcategories")
-              .select("id, name, slug")
-              .eq("category_id", matchedCat.id)
-              .eq("is_active", true)
-              .order("sort_order", { ascending: true });
-            if (active) {
-              setSubcategories(
-                subRows?.map((s) => ({
-                  id: s.id,
-                  label: s.name,
-                  slug: s.slug,
-                })) ?? [],
-              );
-            }
+          if (matchedCat && active) {
+            setSubcategories(await fetchSubcategoriesForCategory(matchedCat.id));
           }
-          if (active) setIsLoadingSubcategories(false);
+          active && setIsLoadingSubcategories(false);
         }
 
         if (catsErr || mansErr || tagsErr) {
@@ -641,29 +1033,22 @@ export default function ProductCataloguePage() {
         }
 
         if (!active) return;
-        setCategories(
-          (cats ?? []).map((c) => ({ id: c.id, label: c.name, slug: c.slug })),
+        setCategories(mapCategoryRows(cats as CategoryRow[] | null | undefined));
+        setSuppliers(
+          mapSupplierRows(mans as ManufacturerRow[] | null | undefined),
         );
-        setSuppliers((mans ?? []).map((m) => ({ id: m.id, label: m.name })));
-        setTags(
-          (tagRows ?? []).map((t) => ({
-            id: t.id,
-            label: t.name,
-            slug: t.slug,
-          })),
-        );
+        setTags(mapTagRows(tagRows as TagRow[] | null | undefined));
 
         const categoryKey = searchParams.get("category");
-        if (categoryKey) {
-          const matched = (cats ?? []).find(
-            (c) => c.slug === categoryKey || c.id === categoryKey,
-          );
-          setSelectedCategories(matched ? [matched.id] : []);
-        } else {
-          // Clicking "All" removes category query param; clear any previous filter.
-          setSelectedCategories([]);
-          setIsLoadingSubcategories(false);
-        }
+        const matched = categoryKey
+          ? findCategoryByKey(
+              cats as CategoryRow[] | null | undefined,
+              categoryKey,
+            )
+          : undefined;
+        setSelectedCategories(matched ? [matched.id] : []);
+        // Clicking "All" removes category query param; clear any previous filter.
+        !categoryKey && setIsLoadingSubcategories(false);
         const searchFromUrl = searchParams.get("search")?.trim() ?? "";
         if (searchFromUrl) {
           setSearchInput(searchFromUrl);
@@ -809,7 +1194,7 @@ export default function ProductCataloguePage() {
               : countQuery.in("id", ["__none__"]);
         }
         if (searchTerm) {
-          const escaped = searchTerm.replace(/,/g, " ");
+          const escaped = searchTerm.replaceAll(',', " ");
           const orClauses = [
             `name.ilike.%${escaped}%`,
             `product_type.ilike.%${escaped}%`,
@@ -861,7 +1246,7 @@ export default function ProductCataloguePage() {
               : dataQuery.in("id", ["__none__"]);
         }
         if (searchTerm) {
-          const escaped = searchTerm.replace(/,/g, " ");
+          const escaped = searchTerm.replaceAll(',', " ");
           const orClauses = [
             `name.ilike.%${escaped}%`,
             `product_type.ilike.%${escaped}%`,
@@ -910,9 +1295,9 @@ export default function ProductCataloguePage() {
             | { error: string };
           if (!popularRes.ok || !popularPayload || "error" in popularPayload) {
             throw new Error(
-              (popularPayload && "error" in popularPayload
+              popularPayload && "error" in popularPayload
                 ? popularPayload.error
-                : "Failed to load popular products") as string,
+                : "Failed to load popular products",
             );
           }
 
@@ -930,10 +1315,7 @@ export default function ProductCataloguePage() {
           if (productsErr) throw productsErr;
 
           const rowMap = new Map(
-            ((productRows ?? []) as unknown as ProductRow[]).map((r) => [
-              r.id,
-              r,
-            ]),
+            ((productRows ?? []) as ProductRow[]).map((r) => [r.id, r]),
           );
           const orderedRows = ids
             .map((id) => rowMap.get(id))
@@ -941,36 +1323,9 @@ export default function ProductCataloguePage() {
 
           if (!active) return;
 
-          const mappedProducts: Product[] = orderedRows.map((row, idx) => {
-            const imageUrls = (row.product_images ?? [])
-              .map((img) =>
-                img.file_path
-                  ? supabase.storage
-                      .from("product-images")
-                      .getPublicUrl(img.file_path).data.publicUrl
-                  : null,
-              )
-              .filter((u): u is string => Boolean(u));
-            const primary =
-              (row.product_images ?? []).find((img) => img.is_primary) ?? null;
-            const image = primary?.file_path
-              ? supabase.storage
-                  .from("product-images")
-                  .getPublicUrl(primary.file_path).data.publicUrl
-              : (imageUrls[0] ?? null);
-            return {
-              id: row.id,
-              name: row.name,
-              subtext: row.manufacturers?.[0]?.name || "",
-              productType: row.product_type,
-              description: row.short_description,
-              image,
-              galleryImages: imageUrls,
-              productUrl: row.product_url,
-              createdAt: row.created_at,
-              isWishlisted: idx % 2 === 0,
-            };
-          });
+          const mappedProducts: Product[] = orderedRows.map((row, idx) =>
+            mapProductRowToProduct(row, idx),
+          );
 
           setProducts(mappedProducts);
           const newTotalPages = Math.max(
@@ -1001,38 +1356,9 @@ export default function ProductCataloguePage() {
 
         if (!active) return;
 
-        const mappedProducts: Product[] = (
-          (productRows ?? []) as unknown as ProductRow[]
-        ).map((row, idx) => {
-          const primary =
-            (row.product_images ?? []).find((img) => img.is_primary) ?? null;
-          const imageUrls = (row.product_images ?? [])
-            .map((img) =>
-              img.file_path
-                ? supabase.storage
-                    .from("product-images")
-                    .getPublicUrl(img.file_path).data.publicUrl
-                : null,
-            )
-            .filter((u): u is string => Boolean(u));
-          const image = primary?.file_path
-            ? supabase.storage
-                .from("product-images")
-                .getPublicUrl(primary.file_path).data.publicUrl
-            : (imageUrls[0] ?? null);
-          return {
-            id: row.id,
-            name: row.name,
-            subtext: row.manufacturers?.[0]?.name || "",
-            productType: row.product_type,
-            description: row.short_description,
-            image,
-            galleryImages: imageUrls,
-            productUrl: row.product_url,
-            createdAt: row.created_at,
-            isWishlisted: idx % 2 === 0,
-          };
-        });
+        const mappedProducts: Product[] = (productRows ?? []).map((row, idx) =>
+          mapProductRowToProduct(row, idx),
+        );
 
         setTotalProducts(count ?? 0);
         setProducts(mappedProducts);
@@ -1073,6 +1399,52 @@ export default function ProductCataloguePage() {
     { value: "oldest", label: "Oldest first" },
     { value: "popular", label: "Most Popular" },
   ];
+  const hasActiveCategory = Boolean(searchParams.get("category"));
+  const hasActiveSubcategory = Boolean(searchParams.get("subcategory"));
+  const renderSubcategoryChips = () => {
+    if (isLoadingSubcategories) {
+      return (
+        <span className="shrink-0 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-500 ring-1 ring-gray-200 whitespace-nowrap">
+          Loading...
+        </span>
+      );
+    }
+
+    if (subcategories.length === 0) {
+      return (
+        <span className="shrink-0 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-400 ring-1 ring-gray-200 whitespace-nowrap">
+          No subcategories
+        </span>
+      );
+    }
+
+    return subcategories.map((sub) => {
+      const isActive = searchParams.get("subcategory") === (sub.slug ?? sub.id);
+      return (
+        <button
+          key={sub.id}
+          type="button"
+          onClick={() => {
+            setCurrentPage(1);
+            const params = new URLSearchParams();
+            params.set("category", searchParams.get("category")!);
+            params.set("subcategory", sub.slug ?? sub.id);
+            if (ctxProjectId) params.set("projectId", ctxProjectId);
+            if (ctxSectionId) params.set("sectionId", ctxSectionId);
+            router.push(`/dashboard/product-catalogue?${params.toString()}`);
+          }}
+          className={[
+            "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
+            isActive
+              ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
+              : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
+          ].join(" ")}
+        >
+          {sub.label}
+        </button>
+      );
+    });
+  };
 
   return (
     <>
@@ -1146,9 +1518,7 @@ export default function ProductCataloguePage() {
               href="/admin/products/new"
               className="inline-flex items-center gap-2 rounded-full bg-emerald-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
             >
-              <span className="text-lg font-bold leading-none">
-                    +
-                  </span>
+              <span className="text-lg font-bold leading-none">+</span>{" "}
               Add New Product
             </Link>
           ) : null}
@@ -1168,9 +1538,9 @@ export default function ProductCataloguePage() {
               }}
               className={[
                 "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-                !searchParams.get("category")
-                  ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
-                  : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
+                hasActiveCategory
+                  ? "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+                  : "bg-emerald-700 text-white ring-1 ring-emerald-900/20",
               ].join(" ")}
             >
               All
@@ -1208,7 +1578,7 @@ export default function ProductCataloguePage() {
         </div>
 
         {/* ── Row 2: Subcategory chips — shown only when a category is selected ── */}
-        {searchParams.get("category") && (
+        {hasActiveCategory && (
           <div className="mt-3 -mx-1">
             <div className="flex items-center gap-2 overflow-x-auto rounded-2xl bg-gray-100 px-4 py-3 scrollbar-none">
               <button
@@ -1225,53 +1595,14 @@ export default function ProductCataloguePage() {
                 }}
                 className={[
                   "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-                  !searchParams.get("subcategory")
-                    ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
-                    : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
+                  hasActiveSubcategory
+                    ? "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+                    : "bg-emerald-700 text-white ring-1 ring-emerald-900/20",
                 ].join(" ")}
               >
                 All
               </button>
-
-              {isLoadingSubcategories ? (
-                <span className="shrink-0 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-500 ring-1 ring-gray-200 whitespace-nowrap">
-                  Loading...
-                </span>
-              ) : subcategories.length === 0 ? (
-                <span className="shrink-0 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-400 ring-1 ring-gray-200 whitespace-nowrap">
-                  No subcategories
-                </span>
-              ) : (
-                subcategories.map((sub) => {
-                  const isActive =
-                    searchParams.get("subcategory") === (sub.slug ?? sub.id);
-                  return (
-                    <button
-                      key={sub.id}
-                      type="button"
-                      onClick={() => {
-                        setCurrentPage(1);
-                        const params = new URLSearchParams();
-                        params.set("category", searchParams.get("category")!);
-                        params.set("subcategory", sub.slug ?? sub.id);
-                        if (ctxProjectId) params.set("projectId", ctxProjectId);
-                        if (ctxSectionId) params.set("sectionId", ctxSectionId);
-                        router.push(
-                          `/dashboard/product-catalogue?${params.toString()}`,
-                        );
-                      }}
-                      className={[
-                        "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap",
-                        isActive
-                          ? "bg-emerald-700 text-white ring-1 ring-emerald-900/20"
-                          : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50",
-                      ].join(" ")}
-                    >
-                      {sub.label}
-                    </button>
-                  );
-                })
-              )}
+              {renderSubcategoryChips()}
             </div>
           </div>
         )}
@@ -1470,7 +1801,16 @@ export default function ProductCataloguePage() {
             </div>
 
             {/* ProductGrid (future refactor) */}
-            <Pagination className="mt-4" />
+            <Pagination
+              className="mt-4"
+              showingStart={showingStart}
+              showingEnd={showingEnd}
+              totalProducts={totalProducts}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageModel={pageModel}
+              onPageChange={setCurrentPage}
+            />
             <div className="mt-4 flex-1 min-h-0">
               <div
                 className={[
@@ -1491,268 +1831,15 @@ export default function ProductCataloguePage() {
                   </div>
                 ) : null}
                 {products.map((p) => (
-                  <article
+                  <ProductCard
                     key={p.id}
-                    className="rounded-[18px] bg-white ring-1 ring-gray-200/80 shadow-[0_14px_40px_rgba(0,0,0,0.10)]"
-                  >
-                    {isListView ? (
-                      <div className="flex items-start gap-3 p-4">
-                        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[10px] bg-[#eef3f2] ring-1 ring-black/5">
-                          {p.productUrl ? (
-                            <a
-                              href={p.productUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="absolute inset-0"
-                            >
-                              {p.image ? (
-                                <Image
-                                  src={p.image}
-                                  alt={p.name}
-                                  fill
-                                  sizes="80px"
-                                  className="object-cover"
-                                />
-                              ) : (
-                                <div className="absolute inset-0 bg-gray-200" />
-                              )}
-                            </a>
-                          ) : p.image ? (
-                            <Image
-                              src={p.image}
-                              alt={p.name}
-                              fill
-                              sizes="80px"
-                              className="object-cover"
-                            />
-                          ) : (
-                            <div className="absolute inset-0 bg-gray-200" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          {p.productUrl ? (
-                            <h3 className="text-sm font-semibold text-emerald-950">
-                              <a
-                                href={p.productUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {p.name}
-                              </a>
-                            </h3>
-                          ) : (
-                            <h3 className="text-sm font-semibold text-emerald-950">
-                              {p.name}
-                            </h3>
-                          )}
-                          <p className="mt-1 text-xs font-semibold text-gray-500">
-                            {p.subtext}
-                          </p>
-                          {p.productType ? (
-                            <p className="mt-1 text-xs font-medium text-gray-500">
-                              {p.productType}
-                            </p>
-                          ) : null}
-                          {p.description ? (
-                            <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                              {getSafeDescription(p.description)}
-                            </p>
-                          ) : null}
-                        </div>
-                        {(p.galleryImages?.length ?? 0) > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openGallery(p.galleryImages ?? [], 0)
-                            }
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 shadow-sm transition-colors hover:bg-white"
-                            aria-label="Open gallery"
-                            title="Gallery"
-                          >
-                            <Icon name="grid" className="h-4.5 w-4.5" />
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void handleHeartClick(p.id)}
-                          disabled={addingProductIds.has(p.id)}
-                          className={[
-                            "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
-                            addedProductIds.has(p.id)
-                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                              : "bg-emerald-900 text-white ring-emerald-900/20 hover:bg-emerald-800",
-                            addingProductIds.has(p.id) ? "opacity-60" : "",
-                          ].join(" ")}
-                          aria-label="Add to project"
-                        >
-                          {addedProductIds.has(p.id) ? (
-                            <>
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5 fill-none stroke-current"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M20 6 9 17l-5-5" />
-                              </svg>
-                              Added
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5 fill-none stroke-current"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                              >
-                                <path d="M12 5v14M5 12h14" />
-                              </svg>
-                              Add
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex h-full flex-col p-4">
-                        <div className="relative overflow-hidden rounded-[14px] bg-[#eef3f2] ring-1 ring-black/5">
-                          <div className="relative aspect-square w-full">
-                            {p.productUrl ? (
-                              <a
-                                href={p.productUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {p.image ? (
-                                  <Image
-                                    src={p.image}
-                                    alt={p.name}
-                                    fill
-                                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                                    className="object-cover"
-                                  />
-                                ) : (
-                                  <div className="absolute inset-0 bg-gray-200" />
-                                )}
-                              </a>
-                            ) : p.image ? (
-                              <Image
-                                src={p.image}
-                                alt={p.name}
-                                fill
-                                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                                className="object-cover"
-                              />
-                            ) : (
-                              <div className="absolute inset-0 bg-gray-200" />
-                            )}
-                          </div>
-
-                          {(p.galleryImages?.length ?? 0) > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openGallery(p.galleryImages ?? [], 0)
-                              }
-                              className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 shadow-sm transition-colors hover:bg-white"
-                              aria-label="Open gallery"
-                              title="Gallery"
-                            >
-                              <Icon name="grid" className="h-4.5 w-4.5" />
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => void handleHeartClick(p.id)}
-                            className={[
-                              "absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 shadow-sm transition-colors hover:bg-white",
-                              addedProductIds.has(p.id)
-                                ? "text-emerald-700"
-                                : "",
-                              addingProductIds.has(p.id) ? "opacity-60" : "",
-                            ].join(" ")}
-                            aria-label="Add to project"
-                            disabled={addingProductIds.has(p.id)}
-                          >
-                            <Icon
-                              name="heart"
-                              className={[
-                                "h-4.5 w-4.5",
-                                addedProductIds.has(p.id)
-                                  ? "fill-emerald-700/15"
-                                  : "",
-                              ].join(" ")}
-                            />
-                          </button>
-                        </div>
-
-                        <div className="mt-4 flex-1">
-                          {p.productUrl ? (
-                            <h3 className="text-sm font-semibold text-emerald-950">
-                              <a
-                                href={p.productUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {p.name}
-                              </a>
-                            </h3>
-                          ) : (
-                            <h3 className="text-sm font-semibold text-emerald-950">
-                              {p.name}
-                            </h3>
-                          )}
-                          <p className="mt-1 text-xs font-semibold text-gray-500">
-                            {p.subtext}
-                          </p>
-                          {p.productType ? (
-                            <p className="mt-1 text-xs font-medium text-gray-500">
-                              {p.productType}
-                            </p>
-                          ) : null}
-                          {p.description ? (
-                            <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                              {getSafeDescription(p.description)}
-                            </p>
-                          ) : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleHeartClick(p.id)}
-                          disabled={addingProductIds.has(p.id)}
-                          className={[
-                            "mt-10 inline-flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-semibold transition-colors",
-                            addedProductIds.has(p.id)
-                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                              : "bg-emerald-900 text-white hover:bg-emerald-800",
-                            addingProductIds.has(p.id) ? "opacity-60" : "",
-                          ].join(" ")}
-                        >
-                          {addedProductIds.has(p.id) ? (
-                            <>
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5 fill-none stroke-current"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M20 6 9 17l-5-5" />
-                              </svg>
-                              Added to Project
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-lg font-bold leading-none">
-                                +
-                              </span>
-                              Add to Project
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </article>
+                    product={p}
+                    isListView={isListView}
+                    addedProductIds={addedProductIds}
+                    addingProductIds={addingProductIds}
+                    handleHeartClick={handleHeartClick}
+                    openGallery={openGallery}
+                  />
                 ))}
               </div>
               {productsLoading ? (
@@ -1762,7 +1849,16 @@ export default function ProductCataloguePage() {
               ) : null}
             </div>
             {/* Pagination (future refactor) */}
-            <Pagination className="mt-4" />
+            <Pagination
+              className="mt-4"
+              showingStart={showingStart}
+              showingEnd={showingEnd}
+              totalProducts={totalProducts}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageModel={pageModel}
+              onPageChange={setCurrentPage}
+            />
           </section>
         </section>
       </main>
@@ -1804,16 +1900,21 @@ export default function ProductCataloguePage() {
       />
 
       {galleryOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setGalleryOpen(false)}
+        <dialog
+          open
+          className="fixed inset-0 z-50 m-0 flex h-full w-full max-w-none items-center justify-center bg-black/70 p-4"
+          onCancel={(event) => {
+            event.preventDefault();
+            setGalleryOpen(false);
+          }}
         >
-          <div
-            className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close gallery"
+            onClick={() => setGalleryOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
             <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
               <div className="text-sm font-semibold text-gray-900">
                 Gallery ({galleryIndex + 1}/{galleryImages.length})
@@ -1868,7 +1969,7 @@ export default function ProductCataloguePage() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       ) : null}
     </>
   );

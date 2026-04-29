@@ -187,7 +187,7 @@ export default function AdminEditUserPage() {
             href="/users"
             className="inline-flex items-center gap-2 text-sm font-medium text-white/80 transition-colors hover:text-white"
           >
-            <span aria-hidden="true">←</span>
+            <span aria-hidden="true">←</span>{" "}
             Users
           </Link>
 

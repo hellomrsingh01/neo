@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { isCommonPassword } from "@/lib/common-passwords"
 
-function IconLock({ className }: { className?: string }) {
+function IconLock({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       aria-hidden="true"
@@ -35,7 +35,7 @@ function IconLock({ className }: { className?: string }) {
   );
 }
 
-function IconEye({ className }: { className?: string }) {
+function IconEye({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       aria-hidden="true"
@@ -60,7 +60,7 @@ function IconEye({ className }: { className?: string }) {
   );
 }
 
-function IconEyeOff({ className }: { className?: string }) {
+function IconEyeOff({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       aria-hidden="true"
@@ -192,8 +192,8 @@ export default function NewPasswordPage() {
 
     const initRecoverySession = async () => {
       try {
-        if (typeof window !== "undefined" && window.location.hash) {
-          const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        if (typeof window !== "undefined" && globalThis.location.hash) {
+          const hashParams = new URLSearchParams(globalThis.location.hash.slice(1));
           const accessToken = hashParams.get("access_token");
           const refreshToken = hashParams.get("refresh_token");
 
@@ -202,10 +202,10 @@ export default function NewPasswordPage() {
               access_token: accessToken,
               refresh_token: refreshToken,
             });
-            window.history.replaceState(
+            globalThis.history.replaceState(
               null,
               "",
-              window.location.pathname + window.location.search
+              globalThis.location.pathname + globalThis.location.search
             );
           }
         }
