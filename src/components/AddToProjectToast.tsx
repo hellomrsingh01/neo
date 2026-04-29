@@ -19,7 +19,7 @@
    useEffect(() => {
      if (!open) return;
      if (timeoutRef.current) {
-       window.clearTimeout(timeoutRef.current);
+       globalThis.clearTimeout(timeoutRef.current);
        timeoutRef.current = null;
      }
  
@@ -31,7 +31,7 @@
  
      return () => {
        if (timeoutRef.current) {
-         window.clearTimeout(timeoutRef.current);
+         globalThis.clearTimeout(timeoutRef.current);
          timeoutRef.current = null;
        }
      };

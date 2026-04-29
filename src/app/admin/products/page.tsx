@@ -354,9 +354,9 @@ export default function AdminProductsPage() {
           slug: name
             .toLowerCase()
             .trim()
-            .replace(/[^a-z0-9\s-]/g, "")
-            .replace(/\s+/g, "-")
-            .replace(/-+/g, "-"),
+            .replaceAll(/[^a-z0-9\s-]/g, "")
+            .replaceAll(/\s+/g, "-")
+            .replaceAll(/-+/g, "-"),
           product_url: get("product_url") || null,
           product_type: productType,
           short_description: get("short_description") || null,
@@ -434,10 +434,7 @@ export default function AdminProductsPage() {
                   type="checkbox"
                   checked={showArchived}
                   onChange={(event) => setShowArchived(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Show archived
-              </label>
+                  className="h-4 w-4"/>Show archived</label>
 
               <select
                 value={selectedCategory}

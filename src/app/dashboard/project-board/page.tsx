@@ -323,9 +323,7 @@ export default function ProjectBoardPage() {
           onClick={openCreateModal}
           className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
         >
-          <span className="text-lg font-bold leading-none">
-            +
-          </span>
+          <span className="text-lg font-bold leading-none">+</span>{" "}
           Add New Project
         </button>
       </section>

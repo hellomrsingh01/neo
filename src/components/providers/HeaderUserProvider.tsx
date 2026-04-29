@@ -38,7 +38,7 @@ function mapUser(authUser: User, profile: { full_name: string | null; email: str
   };
 }
 
-export function HeaderUserProvider({ children }: { children: React.ReactNode }) {
+export function HeaderUserProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [user, setUser] = useState<HeaderUser>(DEFAULT_HEADER_USER);
   const [loading, setLoading] = useState(true);
 

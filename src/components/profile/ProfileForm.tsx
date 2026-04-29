@@ -11,7 +11,7 @@ export type ProfileFormData = {
   address?: string | null;
 };
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="text-xs font-medium text-gray-700">{children}</div>;
 }
 

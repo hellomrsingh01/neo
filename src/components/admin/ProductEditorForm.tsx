@@ -84,9 +84,9 @@ const slugify = (value: string) =>
   value
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+    .replaceAll(/[^a-z0-9\s-]/g, "")
+    .replaceAll(/\s+/g, "-")
+    .replaceAll(/-+/g, "-");
 
 const emptyForm: ProductFormState = {
   manufacturer_id: "",
@@ -774,8 +774,8 @@ export default function ProductEditorForm({
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [showDeleteConfirm]);
 
   const getImageUrl = (path: string) => {
@@ -1013,7 +1013,7 @@ export default function ProductEditorForm({
                         }
                         className="h-4 w-4"
                       />
-                      Popular flag
+                      Popular flag{" "}
                     </label>
                     {isEditMode ? (
                       <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -1028,7 +1028,7 @@ export default function ProductEditorForm({
                           }
                           className="h-4 w-4"
                         />
-                        Archived
+                        Archived{" "}
                       </label>
                     ) : null}
                   </div>

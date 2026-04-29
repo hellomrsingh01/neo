@@ -104,7 +104,7 @@ const emptyCategoryForm: CategoryForm = {
   is_active: true,
 };
 
-function DragHandleIcon({ className }: { className?: string }) {
+function DragHandleIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -125,10 +125,10 @@ function DragHandleIcon({ className }: { className?: string }) {
 function SortableItem({
   id,
   children,
-}: {
+}: Readonly< {
   id: string;
   children: (handleProps: Record<string, unknown>) => React.ReactNode;
-}) {
+}>) {
   const {
     attributes,
     listeners,
@@ -445,6 +445,12 @@ export default function AdminCategoriesPage() {
     }
   };
 
+
+  const findSubcategoryIndexById = (
+    subcategories: Subcategory[],
+    id: string,
+  ) => subcategories.findIndex((subcategory) => subcategory.id === id);
+
   const persistSubcategoryOrder = useCallback(
     async (categoryId: string, nextSubcategories: Subcategory[]) => {
       setSaving(true);
@@ -466,7 +472,7 @@ export default function AdminCategoriesPage() {
       setSubcategories((prev) =>
         prev.map((item) => {
           if (item.category_id !== categoryId) return item;
-          const idx = nextSubcategories.findIndex((x) => x.id === item.id);
+          const idx = findSubcategoryIndexById(nextSubcategories, item.id);
           return idx === -1 ? item : { ...item, sort_order: idx };
         }),
       );
@@ -494,16 +500,17 @@ export default function AdminCategoriesPage() {
     const activeSub = subcategories.find((s) => s.id === String(active.id));
     const overSub = subcategories.find((s) => s.id === String(over.id));
 
-    if (!activeSub || !overSub || activeSub.category_id !== overSub.category_id)
-      return;
+    if (activeSub?.category_id !== overSub?.category_id) return;
+    const categoryId = activeSub?.category_id;
+    if (!categoryId) return;
 
-    const list = groupedSubcategories.get(activeSub.category_id) ?? [];
+    const list = groupedSubcategories.get(categoryId) ?? [];
     const oldIndex = list.findIndex((s) => s.id === String(active.id));
     const newIndex = list.findIndex((s) => s.id === String(over.id));
     if (oldIndex < 0 || newIndex < 0) return;
 
     void persistSubcategoryOrder(
-      activeSub.category_id,
+      categoryId,
       arrayMove(list, oldIndex, newIndex),
     );
   };
@@ -701,11 +708,15 @@ export default function AdminCategoriesPage() {
       return;
     }
 
-    const warning =
-      (subCount ?? 0) > 0
-        ? `⚠️ This category contains ${subCount} subcategor${subCount === 1 ? "y" : "ies"}. Deleting it will also delete those subcategories.`
-        : undefined;
+    const totalSubcategories = subCount ?? 0;
 
+let warning: string | undefined;
+
+if (totalSubcategories > 0) {
+  const suffix = totalSubcategories === 1 ? "y" : "ies";
+
+  warning = `⚠️ This category contains ${totalSubcategories} subcategor${suffix}. Deleting it will also delete those subcategories.`;
+}
     setPendingDelete({
       type: "category",
       item: category,
@@ -758,9 +769,89 @@ export default function AdminCategoriesPage() {
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [pendingDelete]);
+
+  const handleEditingCategoryNameChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setEditingCategory((prev) => ({
+      ...prev,
+      name: e.target.value,
+    }));
+  };
+
+  const handleEditingCategoryIconChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setEditingCategory((prev) => ({
+      ...prev,
+      icon_name: e.target.value,
+    }));
+  };
+
+  const handleEditingCategoryActiveChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setEditingCategory((prev) => ({
+      ...prev,
+      is_active: e.target.checked,
+    }));
+  };
+
+  const handleEditingSubcategoryCategoryChange = (
+    e: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
+    setEditingSubcategory((prev) => ({
+      ...prev,
+      category_id: e.target.value,
+    }));
+  };
+
+  const handleEditingSubcategoryNameChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setEditingSubcategory((prev) => ({
+      ...prev,
+      name: e.target.value,
+    }));
+  };
+
+  const handleEditingSubcategoryActiveChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setEditingSubcategory((prev) => ({
+      ...prev,
+      is_active: e.target.checked,
+    }));
+  };
+
+  const cancelEditingSubcategory = () => {
+    setEditingSubcategoryId(null);
+  };
+
+  const onEditSubcategory = (subcategory: Subcategory) => {
+    startEditSubcategory(subcategory);
+  };
+
+  const onDeleteSubcategory = (subcategory: Subcategory) => {
+    openSubcategoryDeleteModal(subcategory);
+  };
+
+  const getEditSubcategoryHandler = (subcategory: Subcategory) => {
+    return () => onEditSubcategory(subcategory);
+  };
+
+  const getDeleteSubcategoryHandler = (subcategory: Subcategory) => {
+    return () => onDeleteSubcategory(subcategory);
+  };
+
+  const subcategoryCategoryOptions = categories.map((item) => (
+    <option key={item.id} value={item.id}>
+      {item.name}
+    </option>
+  ));
 
   if (!adminChecked || !isAdmin) {
     return (
@@ -823,9 +914,7 @@ export default function AdminCategoriesPage() {
                     }))
                   }
                   className="h-4 w-4"
-                />
-                Active
-              </label>
+                />Active</label>{" "}
               <button
                 type="button"
                 onClick={addCategory}
@@ -865,12 +954,7 @@ export default function AdminCategoriesPage() {
                           {editingCategoryId === category.id ? (
                             <input
                               value={editingCategory.name}
-                              onChange={(e) =>
-                                setEditingCategory((prev) => ({
-                                  ...prev,
-                                  name: e.target.value,
-                                }))
-                              }
+                              onChange={handleEditingCategoryNameChange}
                               className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
                             />
                           ) : (
@@ -886,12 +970,7 @@ export default function AdminCategoriesPage() {
                           {editingCategoryId === category.id ? (
                             <input
                               value={editingCategory.icon_name}
-                              onChange={(e) =>
-                                setEditingCategory((prev) => ({
-                                  ...prev,
-                                  icon_name: e.target.value,
-                                }))
-                              }
+                              onChange={handleEditingCategoryIconChange}
                               className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
                             />
                           ) : (
@@ -909,15 +988,8 @@ export default function AdminCategoriesPage() {
                                 <input
                                   type="checkbox"
                                   checked={editingCategory.is_active}
-                                  onChange={(e) =>
-                                    setEditingCategory((prev) => ({
-                                      ...prev,
-                                      is_active: e.target.checked,
-                                    }))
-                                  }
-                                />
-                                Active
-                              </label>
+                                  onChange={handleEditingCategoryActiveChange}
+                                />Active</label>
                             ) : null}
                           </div>
 
@@ -1020,9 +1092,7 @@ export default function AdminCategoriesPage() {
                     }))
                   }
                   className="h-4 w-4"
-                />
-                Active
-              </label>
+                />Active</label>
               <button
                 type="button"
                 onClick={addSubcategory}
@@ -1065,15 +1135,14 @@ export default function AdminCategoriesPage() {
                         </button>
                       </div>
 
-                      {isExpanded
-                        ? list.length === 0
-                          ? (
-                              <p className="mt-2 text-xs text-gray-500">
-                                No subcategories
-                              </p>
-                            )
-                          : (
-                              <div className="mt-3 space-y-2">
+                      {isExpanded && list.length === 0 ? (
+  <p className="mt-2 text-xs text-gray-500">
+    No subcategories
+  </p>
+) : null}
+
+{isExpanded && list.length > 0 ? (
+  <div className="mt-3 space-y-2">
                                 <SortableContext
                                   items={list.map((s) => s.id)}
                                   strategy={verticalListSortingStrategy}
@@ -1095,30 +1164,17 @@ export default function AdminCategoriesPage() {
                                             <div className="grid gap-2 md:grid-cols-3">
                                               <select
                                                 value={editingSubcategory.category_id}
-                                                onChange={(e) =>
-                                                  setEditingSubcategory((prev) => ({
-                                                    ...prev,
-                                                    category_id: e.target.value,
-                                                  }))
+                                                onChange={
+                                                  handleEditingSubcategoryCategoryChange
                                                 }
                                                 className="h-9 rounded-[10px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200"
                                               >
-                                                {categories.map((item) => (
-                                                  <option
-                                                    key={item.id}
-                                                    value={item.id}
-                                                  >
-                                                    {item.name}
-                                                  </option>
-                                                ))}
+                                                {subcategoryCategoryOptions}
                                               </select>
                                               <input
                                                 value={editingSubcategory.name}
-                                                onChange={(e) =>
-                                                  setEditingSubcategory((prev) => ({
-                                                    ...prev,
-                                                    name: e.target.value,
-                                                  }))
+                                                onChange={
+                                                  handleEditingSubcategoryNameChange
                                                 }
                                                 className="h-9 rounded-[10px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200"
                                               />
@@ -1128,15 +1184,10 @@ export default function AdminCategoriesPage() {
                                                   checked={
                                                     editingSubcategory.is_active
                                                   }
-                                                  onChange={(e) =>
-                                                    setEditingSubcategory((prev) => ({
-                                                      ...prev,
-                                                      is_active: e.target.checked,
-                                                    }))
+                                                  onChange={
+                                                    handleEditingSubcategoryActiveChange
                                                   }
-                                                />
-                                                Active
-                                              </label>
+                                                />Active</label>
                                             </div>
                                           ) : (
                                             <div className="text-sm text-gray-800">
@@ -1166,9 +1217,7 @@ export default function AdminCategoriesPage() {
                                                 </button>
                                                 <button
                                                   type="button"
-                                                  onClick={() =>
-                                                    setEditingSubcategoryId(null)
-                                                  }
+                                                  onClick={cancelEditingSubcategory}
                                                   className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
                                                 >
                                                   Cancel
@@ -1178,20 +1227,14 @@ export default function AdminCategoriesPage() {
                                               <>
                                                 <button
                                                   type="button"
-                                                  onClick={() =>
-                                                    startEditSubcategory(sub)
-                                                  }
+                                                  onClick={getEditSubcategoryHandler(sub)}
                                                   className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
                                                 >
                                                   Edit
                                                 </button>
                                                 <button
                                                   type="button"
-                                                  onClick={() =>
-                                                    openSubcategoryDeleteModal(
-                                                      sub,
-                                                    )
-                                                  }
+                                                  onClick={getDeleteSubcategoryHandler(sub)}
                                                   className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
                                                 >
                                                   Delete
@@ -1331,47 +1374,53 @@ export default function AdminCategoriesPage() {
               )}
             </div>
           </section>
-      {pendingDelete ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
-          onClick={() => setPendingDelete(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-[16px] bg-white p-5 text-gray-900 shadow-2xl ring-1 ring-black/10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-emerald-950">
-              {pendingDelete.title}
-            </h3>
-            <p className="mt-2 text-sm text-gray-700">{pendingDelete.message}</p>
-            {pendingDelete.warning ? (
-              <p className="mt-2 text-sm font-medium text-amber-700">
-                {pendingDelete.warning}
-              </p>
-            ) : null}
-            <p className="mt-2 text-xs text-gray-500">
-              This action cannot be undone.
-            </p>
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setPendingDelete(null)}
-                className="h-9 rounded-lg bg-gray-100 px-4 text-sm font-semibold text-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmPendingDelete()}
-                className="h-9 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-                disabled={saving}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+          {pendingDelete ? (
+  <dialog
+    open
+    className="fixed inset-0 z-50 flex h-full w-full max-w-none items-center justify-center bg-transparent px-4"
+    aria-modal="true"
+    onCancel={() => setPendingDelete(null)}
+  >
+    <button
+      type="button"
+      aria-label="Close delete confirmation modal"
+      className="absolute inset-0 bg-black/45"
+      onClick={() => setPendingDelete(null)}
+    />
+
+    <div className="relative z-10 w-full max-w-md rounded-[16px] bg-white p-5 text-gray-900 shadow-2xl ring-1 ring-black/10">
+      <h3 className="text-lg font-semibold text-emerald-950">
+        {pendingDelete.title}
+      </h3>
+      <p className="mt-2 text-sm text-gray-700">{pendingDelete.message}</p>
+      {pendingDelete.warning ? (
+        <p className="mt-2 text-sm font-medium text-amber-700">
+          {pendingDelete.warning}
+        </p>
       ) : null}
+      <p className="mt-2 text-xs text-gray-500">
+        This action cannot be undone.
+      </p>
+      <div className="mt-5 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setPendingDelete(null)}
+          className="h-9 rounded-lg bg-gray-100 px-4 text-sm font-semibold text-gray-700"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void confirmPendingDelete()}
+          className="h-9 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={saving}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </dialog>
+) : null}
     </div>
   );
 }
