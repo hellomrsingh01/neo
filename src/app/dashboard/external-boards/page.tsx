@@ -107,16 +107,16 @@ export default function ExternalBoardsPage() {
           <p className="mt-2 text-sm font-medium text-red-600">{error}</p>
         ) : null}
 
-        <div className="mt-4 overflow-hidden rounded-[14px] bg-white ring-1 ring-gray-200/80">
-          <table className="w-full table-fixed border-collapse">
+        <div className="mt-4 overflow-x-auto rounded-[14px] bg-white ring-1 ring-gray-200/80">
+          <table className="min-w-[760px] w-full table-auto border-collapse">
             <thead>
               <tr className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-3">Project Name</th>
-                <th className="w-[180px] px-4 py-3">Client</th>
-                <th className="w-[150px] px-4 py-3">Last updated</th>
-                <th className="w-[160px] px-4 py-3">Last Viewed</th>
-                <th className="w-[100px] px-4 py-3 text-center">Items</th>
-                <th className="w-[100px] px-4 py-3 text-right">Action</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Project Name</th>
+                <th className="w-[120px] px-2 py-2 sm:px-4 sm:py-3">Client</th>
+                <th className="w-[120px] px-2 py-2 sm:px-4 sm:py-3">Last updated</th>
+                <th className="w-[120px] px-2 py-2 sm:px-4 sm:py-3">Last Viewed</th>
+                <th className="w-[80px] px-2 py-2 text-center sm:px-4 sm:py-3">Items</th>
+                <th className="w-[80px] px-2 py-2 text-right sm:px-4 sm:py-3">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -124,7 +124,7 @@ export default function ExternalBoardsPage() {
                 <tr>
                   <td
                     colSpan={6}
-                    className="px-4 py-6 text-center text-sm text-gray-500"
+                    className="px-2 py-6 text-center text-sm text-gray-500 sm:px-4"
                   >
                     Loading...
                   </td>
@@ -133,7 +133,7 @@ export default function ExternalBoardsPage() {
                 <tr>
                   <td
                     colSpan={6}
-                    className="px-4 py-6 text-center text-sm text-gray-500"
+                    className="px-2 py-6 text-center text-sm text-gray-500 sm:px-4"
                   >
                     No external project boards found.
                   </td>
@@ -144,22 +144,26 @@ export default function ExternalBoardsPage() {
                     key={project.id}
                     className="border-t border-gray-100 text-sm text-gray-700"
                   >
-                    <td className="px-4 py-4 font-medium text-gray-900">
-                      {project.name}
+                    <td className="px-2 py-2 font-medium text-gray-900 sm:px-4 sm:py-4">
+                      <span className="block max-w-[220px] truncate">
+                        {project.name}
+                      </span>
                     </td>
-                    <td className="px-4 py-4 text-gray-500">
-                      {project.client_name ?? "—"}
+                    <td className="px-2 py-2 text-gray-500 sm:px-4 sm:py-4">
+                      <span className="block max-w-[120px] truncate">
+                        {project.client_name ?? "—"}
+                      </span>
                     </td>
-                    <td className="px-4 py-4 text-gray-500">
+                    <td className="px-2 py-2 text-gray-500 sm:px-4 sm:py-4">
                       {formatDate(project.updated_at)}
                     </td>
-                    <td className="px-4 py-4 text-gray-500">
+                    <td className="px-2 py-2 text-gray-500 sm:px-4 sm:py-4">
                       {formatDate(project.last_viewed_at)}
                     </td>
-                    <td className="px-4 py-4 text-center text-gray-500">
+                    <td className="px-2 py-2 text-center text-gray-500 sm:px-4 sm:py-4">
                       {project.item_count}
                     </td>
-                    <td className="px-4 py-4 text-right">
+                    <td className="px-2 py-2 text-right sm:px-4 sm:py-4">
                       <button
                         type="button"
                         onClick={() =>

@@ -308,24 +308,18 @@ export default function ProjectBoardPage() {
 
   return (
     <main className="mt-6">
-      <section className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Project Board
-          </h1>
-          <p className="mt-1 text-sm font-medium text-emerald-100/75">
-            Manage your project boards
-          </p>
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-white">Project Board</h1>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-900 px-3 py-2 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50 sm:px-4 sm:text-sm"
+            onClick={openCreateModal}
+          >
+            + Add New Project
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-400/20 transition-colors hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50"
-        >
-          <span className="text-lg font-bold leading-none">+</span>{" "}
-          Add New Project
-        </button>
+        <p className="mt-1 text-sm text-emerald-100">Manage your project boards</p>
       </section>
 
       <section className="mt-6 rounded-[22px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5 sm:p-5">
@@ -336,16 +330,16 @@ export default function ProjectBoardPage() {
           <p className="mt-2 text-sm font-medium text-red-600">{error}</p>
         ) : null}
 
-        <div className="mt-4 overflow-hidden rounded-[14px] bg-white ring-1 ring-gray-200/80">
-          <table className="w-full table-fixed border-collapse">
+        <div className="mt-4 overflow-x-auto rounded-[14px] bg-white ring-1 ring-gray-200/80">
+          <table className="w-full min-w-full border-collapse sm:min-w-[720px]">
             <thead>
               <tr className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-3">Project Name</th>
-                <th className="w-[140px] px-4 py-3">Total List</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Project Name</th>
+                <th className="w-auto px-2 py-2 sm:w-[100px] sm:px-2 sm:py-3 md:px-3">Total List</th>
                 {isAdminView ? (
-                  <th className="w-[220px] px-4 py-3">Owner</th>
+                  <th className="w-auto px-2 py-2 sm:w-[220px] sm:px-4 sm:py-3">Owner</th>
                 ) : null}
-                <th className="w-[140px] px-4 py-3 text-right">Others</th>
+                <th className="w-auto px-2 py-2 text-right sm:w-[140px] sm:px-4 sm:py-3">Others</th>
               </tr>
             </thead>
             <tbody>
@@ -375,7 +369,7 @@ export default function ProjectBoardPage() {
                       key={project.id}
                       className="border-t border-gray-100 text-sm text-gray-700"
                     >
-                      <td className="px-4 py-4 font-medium">
+                      <td className="min-w-0 px-2 py-2 font-medium sm:px-3 sm:py-4 md:px-4">
                         <button
                           type="button"
                           onClick={() =>
@@ -383,22 +377,22 @@ export default function ProjectBoardPage() {
                               `/dashboard/project-board/${project.id}`,
                             )
                           }
-                          className="text-left text-gray-700 underline-offset-2 hover:text-emerald-800 hover:underline"
+                          className="block w-full truncate text-left text-gray-700 underline-offset-2 hover:text-emerald-800 hover:underline"
                         >
                           {project.name}
                         </button>
                       </td>
-                      <td className="px-4 py-4 text-gray-500">
+                      <td className="min-w-0 px-2 py-2 text-gray-500 sm:px-2 sm:py-4 md:px-3">
                         {project.totalList}
                       </td>
                       {isAdminView ? (
-                        <td className="px-4 py-4 text-gray-500">
+                        <td className="min-w-0 px-2 py-2 text-gray-500 sm:px-4 sm:py-4">
                           {project.owner_name ||
                             project.owner_email ||
                             "Unknown owner"}
                         </td>
                       ) : null}
-                      <td className="px-4 py-4">
+                      <td className="px-2 py-2 sm:px-4 sm:py-4">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"

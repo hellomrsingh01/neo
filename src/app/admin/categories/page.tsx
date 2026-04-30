@@ -10,6 +10,7 @@ import {
   DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   closestCorners,
   useSensor,
   useSensors,
@@ -171,6 +172,12 @@ export default function AdminCategoriesPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -853,7 +860,17 @@ if (totalSubcategories > 0) {
     </option>
   ));
 
-  if (!adminChecked || !isAdmin) {
+  const alreadyAdmin = user.role === "admin";
+
+  if (headerUserLoading && !alreadyAdmin) {
+    return (
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
     return (
       <div className="rounded-[18px] bg-white p-6 text-gray-900">
         Checking access...
@@ -933,7 +950,7 @@ if (totalSubcategories > 0) {
               onDragEnd={handleCategoryDragEnd}
               onDragCancel={() => setActiveCategoryId(null)}
             >
-              <div className="mt-5 space-y-3">
+              <div className="mt-3 space-y-2 sm:mt-5 sm:space-y-3">
                 <SortableContext
                   items={categories.map((c) => c.id)}
                   strategy={verticalListSortingStrategy}
@@ -941,26 +958,35 @@ if (totalSubcategories > 0) {
                   {categories.map((category) => (
                     <SortableItem key={category.id} id={category.id}>
                       {(handleProps) => (
-                        <div className="grid gap-3 rounded-[14px] bg-gray-50 p-3 ring-1 ring-gray-200 items-center md:grid-cols-[auto_1fr_1fr_auto_auto]">
+                        <div
+                          className={
+                            editingCategoryId === category.id
+                              ? "grid grid-cols-1 gap-2 rounded-[14px] bg-gray-50 p-3 ring-1 ring-gray-200 md:grid-cols-[auto_1fr_1fr_auto_auto] md:items-center"
+                              : "grid grid-cols-[auto_1fr_auto] gap-2 rounded-[14px] bg-gray-50 p-3 ring-1 ring-gray-200 items-center sm:gap-3 md:grid-cols-[auto_1fr_1fr_auto_auto]"
+                          }
+                        >
                           {/* Drag handle */}
-                          <div
+                          <button
+                            type="button"
+                            aria-label="Drag to reorder"
+                            style={{ touchAction: "none" }}
                             {...handleProps}
-                            className="flex items-center justify-center self-stretch cursor-grab active:cursor-grabbing rounded-lg px-2 hover:bg-gray-200 transition-colors"
+                            className="flex min-h-10 min-w-10 items-center justify-center cursor-grab rounded-lg px-2 sm:px-3 transition-colors hover:bg-gray-200 active:cursor-grabbing"
                           >
                             <DragHandleIcon className="h-4 w-4 text-gray-400" />
-                          </div>
+                          </button>
 
                           {/* Name col */}
                           {editingCategoryId === category.id ? (
                             <input
                               value={editingCategory.name}
                               onChange={handleEditingCategoryNameChange}
-                              className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
+                              className="h-9 w-full min-w-0 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
                             />
                           ) : (
-                            <div className="text-sm font-semibold text-gray-900">
+                            <div className="space-y-1 text-sm font-semibold text-gray-900 sm:space-y-0">
                               {category.name}
-                              <span className="ml-2 text-xs font-medium text-gray-500">
+                              <span className="block text-xs font-medium text-gray-500 sm:ml-2 sm:inline">
                                 ({category.slug})
                               </span>
                             </div>
@@ -971,10 +997,10 @@ if (totalSubcategories > 0) {
                             <input
                               value={editingCategory.icon_name}
                               onChange={handleEditingCategoryIconChange}
-                              className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
+                              className="h-9 w-full min-w-0 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200 focus:outline-none"
                             />
                           ) : (
-                            <div className="text-sm text-gray-700">
+                            <div className="col-span-3 text-xs text-gray-700 md:col-span-1 md:text-sm">
                               icon: {category.icon_name || "—"} · sort:{" "}
                               {category.sort_order} ·{" "}
                               {category.is_active ? "Active" : "Inactive"}
@@ -982,7 +1008,7 @@ if (totalSubcategories > 0) {
                           )}
 
                           {/* Active checkbox (edit mode only) */}
-                          <div className="flex items-center gap-2">
+                          <div className="flex w-full items-center gap-2">
                             {editingCategoryId === category.id ? (
                               <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                                 <input
@@ -994,20 +1020,26 @@ if (totalSubcategories > 0) {
                           </div>
 
                           {/* Actions */}
-                          <div className="flex flex-wrap items-center justify-end gap-2">
+                          <div
+                            className={
+                              editingCategoryId === category.id
+                                ? "flex w-full items-center gap-2 md:w-auto md:justify-end"
+                                : "col-span-3 flex items-center justify-end gap-2 md:col-span-1"
+                            }
+                          >
                             {editingCategoryId === category.id ? (
                               <>
                                 <button
                                   type="button"
                                   onClick={saveCategory}
-                                  className="h-8 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white"
+                                  className="h-8 flex-1 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white md:flex-none"
                                 >
                                   Save
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setEditingCategoryId(null)}
-                                  className="h-8 rounded-lg bg-white px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200"
+                                  className="h-8 flex-1 rounded-lg bg-white px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 md:flex-none"
                                 >
                                   Cancel
                                 </button>
@@ -1118,7 +1150,7 @@ if (totalSubcategories > 0) {
                   return (
                     <div
                       key={category.id}
-                      className="rounded-[14px] bg-gray-50 p-4 ring-1 ring-gray-200"
+                      className="rounded-[14px] bg-gray-50 p-3 ring-1 ring-gray-200 sm:p-4"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="text-sm font-semibold text-emerald-950">
@@ -1150,14 +1182,17 @@ if (totalSubcategories > 0) {
                                   {list.map((sub) => (
                                     <SortableItem key={sub.id} id={sub.id}>
                                       {(handleProps) => (
-                                        <div className="grid gap-3 rounded-[12px] bg-white p-3 ring-1 ring-gray-200 items-center md:grid-cols-[auto_1fr_auto]">
+                                        <div className="grid grid-cols-[auto_1fr_auto] gap-2 rounded-[14px] bg-gray-50 p-3 ring-1 ring-gray-200 items-center sm:gap-3 md:grid-cols-[auto_1fr_1fr_auto_auto]">
                                           {/* Drag handle */}
-                                          <div
+                                          <button
+                                            type="button"
+                                            aria-label="Drag to reorder"
+                                            style={{ touchAction: "none" }}
                                             {...handleProps}
-                                            className="flex items-center justify-center self-stretch cursor-grab active:cursor-grabbing rounded-lg px-2 hover:bg-gray-100 transition-colors"
+                                            className="flex min-h-10 min-w-10 items-center justify-center cursor-grab rounded-lg px-2 sm:px-3 transition-colors hover:bg-gray-200 active:cursor-grabbing"
                                           >
                                             <DragHandleIcon className="h-4 w-4 text-gray-400" />
-                                          </div>
+                                          </button>
 
                                           {/* Name / edit form */}
                                           {editingSubcategoryId === sub.id ? (
@@ -1190,22 +1225,26 @@ if (totalSubcategories > 0) {
                                                 />Active</label>
                                             </div>
                                           ) : (
-                                            <div className="text-sm text-gray-800">
-                                              <span className="font-semibold">
+                                            <div className="space-y-1 text-sm font-semibold text-gray-900 sm:space-y-0">
+                                              <span>
                                                 {sub.name}
                                               </span>
-                                              <span className="ml-2 text-xs text-gray-500">
-                                                ({sub.slug}) · sort: {sub.sort_order}{" "}
-                                                ·{" "}
-                                                {sub.is_active
-                                                  ? "Active"
-                                                  : "Inactive"}
+                                              <span className="block text-xs font-medium text-gray-500 sm:ml-2 sm:inline">
+                                                ({sub.slug})
                                               </span>
                                             </div>
                                           )}
 
+                                          {/* Meta col */}
+                                          {editingSubcategoryId === sub.id ? null : (
+                                            <div className="col-span-3 text-xs text-gray-700 md:col-span-1 md:text-sm">
+                                              sort: {sub.sort_order} ·{" "}
+                                              {sub.is_active ? "Active" : "Inactive"}
+                                            </div>
+                                          )}
+
                                           {/* Actions */}
-                                          <div className="flex flex-wrap items-center justify-end gap-2">
+                                          <div className="col-span-3 flex items-center justify-end gap-2 md:col-span-1">
                                             {editingSubcategoryId === sub.id ? (
                                               <>
                                                 <button
@@ -1228,7 +1267,7 @@ if (totalSubcategories > 0) {
                                                 <button
                                                   type="button"
                                                   onClick={getEditSubcategoryHandler(sub)}
-                                                  className="h-8 rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700"
+                                                  className="h-8 rounded-lg bg-white px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200"
                                                 >
                                                   Edit
                                                 </button>

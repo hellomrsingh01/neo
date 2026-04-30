@@ -146,6 +146,7 @@ function HeaderIcon({
 export default function Header() {
   const { user } = useHeaderUser();
   const [headerSearch, setHeaderSearch] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -173,6 +174,47 @@ export default function Header() {
     "/admin/manufacturers",
   );
   const isAdminProductsActive = pathname.startsWith("/admin/products");
+  const canViewExternalBoards = user.role === "admin" || user.role === "internal";
+  const isAdmin = user.role === "admin";
+  const mobileNavItems = [
+    { label: "Dashboard", href: "/dashboard", isActive: isDashboardActive, visible: true },
+    {
+      label: "Product Catalogue",
+      href: "/dashboard/product-catalogue",
+      isActive: isProductCatalogueActive,
+      visible: true,
+    },
+    {
+      label: "Project Board",
+      href: "/dashboard/project-board",
+      isActive: isProjectBoardActive,
+      visible: true,
+    },
+    {
+      label: "External Boards",
+      href: "/dashboard/external-boards",
+      isActive: isExternalBoardsActive,
+      visible: canViewExternalBoards,
+    },
+    {
+      label: "Categories",
+      href: "/admin/categories",
+      isActive: isAdminCategoriesActive,
+      visible: isAdmin,
+    },
+    {
+      label: "Manufacturers",
+      href: "/admin/manufacturers",
+      isActive: isAdminManufacturersActive,
+      visible: isAdmin,
+    },
+    {
+      label: "Products",
+      href: "/admin/products",
+      isActive: isAdminProductsActive,
+      visible: isAdmin,
+    },
+  ].filter((item) => item.visible);
 
   return (
     // Shared Dashboard Header
@@ -180,6 +222,26 @@ export default function Header() {
       <div className="w-full px-4 sm:px-6">
         <div className="flex items-center justify-between gap-4 py-2.5">
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white text-gray-700 ring-1 ring-gray-300/80 md:hidden"
+              aria-label="Open navigation menu"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M4 7h16M4 12h16M4 17h16"
+                  className="stroke-current fill-none"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
             <Link
               href="/dashboard"
               className="cursor-pointer transition-opacity hover:opacity-90"
@@ -217,14 +279,14 @@ export default function Header() {
                 isActive={isProjectBoardActive}
                 iconSrc="/Project Board.svg"
               />
-              {user.role === "admin" || user.role === "internal" ? (
+              {canViewExternalBoards ? (
                 <NavTab
                   label="External Boards"
                   href="/dashboard/external-boards"
                   isActive={isExternalBoardsActive}
                 />
               ) : null}
-              {user.role === "admin" ? (
+              {isAdmin ? (
                 <>
                   <NavTab
                     label="Categories"
@@ -294,6 +356,71 @@ export default function Header() {
           </div>
         </div>
       </div>
+      {mobileMenuOpen ? (
+        <div className="md:hidden">
+          <button
+            type="button"
+            className="fixed inset-0 z-40 h-dvh bg-black/40"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Close navigation menu"
+          />
+          <dialog
+            open
+            className="fixed left-0 top-0 bottom-0 z-50 h-dvh w-[60%] max-w-sm overflow-y-auto bg-white shadow-xl md:hidden transition-transform duration-300 ease-in-out"            aria-modal="true"
+          >
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+              <div className="inline-flex items-center gap-2">
+                <Image
+                  src="/logo.svg"
+                  alt="Neo Office"
+                  width={120}
+                  height={32}
+                  unoptimized
+                  className="h-[20px] w-auto object-contain"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-gray-700"
+                aria-label="Close navigation menu"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 6l12 12M18 6 6 18"
+                    className="stroke-current fill-none"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <nav className="flex flex-col gap-1 p-3">
+              {mobileNavItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={[
+                    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    item.isActive
+                      ? "bg-emerald-900 text-white"
+                      : "text-gray-700 hover:bg-gray-100",
+                  ].join(" ")}
+                  aria-current={item.isActive ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </dialog>
+        </div>
+      ) : null}
     </header>
   );
 }

@@ -487,7 +487,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4">
           {statsError ? (
             <div className="text-sm font-medium text-emerald-100/75">
               Could not load data
@@ -506,19 +506,19 @@ export default function DashboardPage() {
             return (
               <div
                 key={stat.label}
-                className="rounded-[18px] bg-white px-5 py-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)] ring-1 ring-black/5"
+                className="min-w-0 overflow-hidden rounded-[18px] bg-white p-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] ring-1 ring-black/5 sm:p-4"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-3xl font-semibold text-emerald-950">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xl font-semibold text-emerald-950 sm:text-2xl md:text-3xl">
                       {statsLoading ? "Loading..." : stat.value}
                     </div>
-                    <div className="mt-0.5 text-sm font-semibold text-gray-500">
+                    <div className="mt-0.5 truncate text-xs font-semibold text-gray-500 sm:text-sm">
                       {stat.label}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-800 ring-1 ring-emerald-900/10">
+                    <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-800 ring-1 ring-emerald-900/10 sm:h-12 sm:w-12">
                       <Icon name={iconName} className="h-5.5 w-5.5" />
                     </div>
                   </div>
@@ -553,7 +553,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3">
             {categoriesLoading ? (
               <div className="text-sm font-medium text-gray-500">
                 Loading...
@@ -570,11 +570,11 @@ export default function DashboardPage() {
               <Link
                 key={cat.id}
                 href={`/dashboard/product-catalogue?category=${encodeURIComponent(cat.slug)}`}
-                className="group rounded-[18px] bg-[#ecf4f2] p-5 ring-1 ring-emerald-900/10 transition-colors hover:bg-[#e6f1ef]"
+                className="group min-w-0 rounded-[18px] bg-[#ecf4f2] p-3 ring-1 ring-emerald-900/10 transition-colors hover:bg-[#e6f1ef] md:p-4"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-900 ring-1 ring-emerald-900/10">
+                <div className="flex items-start justify-between gap-2 md:gap-3">
+                  <div className="flex min-w-0 items-center gap-2 md:gap-3">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-900 ring-1 ring-emerald-900/10 md:h-12 md:w-12">
                       <div className="relative inline-flex h-8 w-8 items-center justify-center">
                         {catIconFile ? (
                           <Image
@@ -593,11 +593,11 @@ export default function DashboardPage() {
                         )}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-base font-semibold text-emerald-950">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-emerald-950 md:text-base">
                         {cat.title}
                       </div>
-                      <div className="text-xs font-medium text-emerald-950/55">
+                      <div className="text-xs font-medium text-emerald-950/55 md:text-sm">
                         {cat.subtitle}
                       </div>
                     </div>
@@ -608,11 +608,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-emerald-900/45">
+                <div className="mt-3 flex items-center justify-between md:mt-4">
+                  <span className="text-xs font-semibold text-emerald-900/45 md:text-sm">
                     View All
                   </span>
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/70 text-emerald-900 ring-1 ring-emerald-900/10 transition-transform group-hover:translate-x-0.5">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/70 text-emerald-900 ring-1 ring-emerald-900/10 transition-transform group-hover:translate-x-0.5 md:h-10 md:w-10">
                     <Icon name="arrowRight" className="h-4.5 w-4.5" />
                   </span>
                 </div>
@@ -668,10 +668,10 @@ export default function DashboardPage() {
                     key={p.id}
                     className="rounded-[18px] bg-white ring-1 ring-gray-200/80 shadow-[0_14px_40px_rgba(0,0,0,0.10)]"
                   >
-                    <div className="p-4">
+                    <div className="p-3 sm:p-4">
                       <div
                         className={[
-                          "relative aspect-4/3 w-full overflow-hidden rounded-[14px] bg-linear-to-br",
+                          "relative h-[140px] w-full overflow-hidden rounded-xl bg-linear-to-br sm:h-[180px] md:h-[220px]",
                           bg,
                         ].join(" ")}
                       >
@@ -687,28 +687,28 @@ export default function DashboardPage() {
                           <div className="absolute inset-0 bg-gray-200" />
                         )}
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.55),transparent_45%),radial-gradient(circle_at_80%_70%,rgba(255,255,255,0.35),transparent_50%)]" />
-                        <div className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-emerald-950 ring-1 ring-black/5">
+                        <div className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-emerald-950 ring-1 ring-black/5">
                           <span className="h-2 w-2 rounded-full bg-emerald-700" />
                           New
                         </div>
                       </div>
 
-                      <div className="mt-4">
-                        <h3 className="text-sm font-semibold text-emerald-950">
+                      <div className="mt-2 sm:mt-3">
+                        <h3 className="truncate text-sm font-semibold text-emerald-950 sm:text-base">
                           {p.title}
                         </h3>
-                        <p className="mt-1 text-xs font-medium text-gray-500">
+                        <p className="mt-1 text-xs font-medium text-gray-500 sm:text-sm">
                           {p.subtitle}
                         </p>
                       </div>
 
                       {p.productUrl ? (
-                        <div className="mt-4">
+                        <div className="mt-2 sm:mt-3">
                           <a
                             href={p.productUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center justify-center rounded-full bg-emerald-800 px-3 py-2 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+                            className="inline-flex h-8 items-center justify-center rounded-full bg-emerald-800 px-3 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 sm:h-10 sm:text-sm"
                           >
                             View details
                           </a>
