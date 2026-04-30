@@ -215,7 +215,7 @@ export default function ExternalBoardDetailPage() {
 
   if (loading) {
     return (
-      <main className="mt-6">
+      <main className="mt-6 flex items-center justify-center w-full h-[60vh]">
         <p className="text-sm text-emerald-100/75">Loading project...</p>
       </main>
     );
@@ -242,17 +242,19 @@ export default function ExternalBoardDetailPage() {
     <main className="mt-6">
       {/* Header */}
       <section className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-start">
-        <div>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/external-boards")}
-            className="mb-2 text-xs text-emerald-100/70 hover:text-emerald-100 underline"
-          >
-            ← External Boards
-          </button>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {project.name}
-          </h1>
+        <div className="w-full sm:w-auto">
+          <div className="flex items-start justify-between gap-3 sm:block">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              {project.name}
+            </h1>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/external-boards")}
+              className="text-xs text-emerald-100/70 hover:text-emerald-100 underline sm:hidden"
+            >
+              ← External Boards
+            </button>
+          </div>
           {project.client_name ? (
             <p className="mt-1 text-sm font-medium text-emerald-100/75">
               {project.client_name}
@@ -264,6 +266,13 @@ export default function ExternalBoardDetailPage() {
           <span className="mt-2 inline-flex items-center rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-100 ring-1 ring-white/20">
             Read-only
           </span>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/external-boards")}
+            className="mt-2 hidden text-xs text-emerald-100/70 hover:text-emerald-100 underline sm:inline-flex"
+          >
+            ← External Boards
+          </button>
         </div>
 
         <button

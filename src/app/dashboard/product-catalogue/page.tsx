@@ -706,11 +706,11 @@ function Pagination({
       <div className="text-xs font-semibold text-gray-500">
         Showing {showingStart}-{showingEnd} of {totalProducts} results
       </div>
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={() => onPageChange((prev) => Math.max(1, prev - 1))}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50 sm:h-9 sm:w-9"
           aria-label="Previous page"
           disabled={currentPage <= 1}
         >
@@ -732,7 +732,7 @@ function Pagination({
               type="button"
               onClick={() => onPageChange(entry)}
               className={[
-                "inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
+                "inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-semibold ring-1 transition-colors sm:h-9 sm:min-w-9 sm:px-3 sm:text-xs",
                 entry === currentPage
                   ? "bg-emerald-900 text-white ring-emerald-900/20"
                   : "bg-gray-100 text-gray-700 ring-gray-200 hover:bg-gray-50",
@@ -751,7 +751,7 @@ function Pagination({
         <button
           type="button"
           onClick={() => onPageChange((prev) => Math.min(totalPages, prev + 1))}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 disabled:opacity-50 sm:h-9 sm:w-9"
           aria-label="Next page"
           disabled={currentPage >= totalPages}
         >
@@ -818,6 +818,7 @@ export default function ProductCataloguePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(24);
   const [sortOpen, setSortOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [ctxProjectName, setCtxProjectName] = useState<string | null>(null);
   const [ctxSectionName, setCtxSectionName] = useState<string | null>(null);
 
@@ -986,6 +987,18 @@ export default function ProductCataloguePage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  useEffect(() => {
+    if (mobileFiltersOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileFiltersOpen]);
 
   useEffect(() => {
     let active = true;
@@ -1446,6 +1459,75 @@ export default function ProductCataloguePage() {
     });
   };
 
+  const renderFiltersContent = () => (
+    <div className="mt-4 space-y-4">
+      <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
+        <div className="text-xs font-semibold text-emerald-950">Supplier</div>
+        <div className="mt-2 space-y-2">
+          {filtersLoading ? (
+            <div className="text-[12px] font-medium text-gray-500">Loading...</div>
+          ) : null}
+          {suppliers.map((s) => (
+            <label
+              key={s.id}
+              className="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-gray-700"
+            >
+              <input
+                type="checkbox"
+                checked={selectedSuppliers.includes(s.id)}
+                onChange={() => {
+                  setCurrentPage(1);
+                  toggleSelection(s.id, selectedSuppliers, setSelectedSuppliers);
+                }}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
+              />
+              <span>{s.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
+        <div className="text-xs font-semibold text-emerald-950">Tags</div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {filtersLoading ? (
+            <div className="text-[12px] font-medium text-gray-500">Loading...</div>
+          ) : null}
+          {tags.map((t) => (
+            <label
+              key={t.id}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+            >
+              <input
+                type="checkbox"
+                checked={selectedTags.includes(t.id)}
+                onChange={() => {
+                  setCurrentPage(1);
+                  toggleSelection(t.id, selectedTags, setSelectedTags);
+                }}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
+              />
+              <span>{t.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleClearFilters}
+        className="mt-1 inline-flex w-full items-center justify-center rounded-full bg-emerald-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40"
+      >
+        Clear All Filters
+      </button>
+      {filtersError ? (
+        <div className="text-[12px] font-medium text-gray-500">
+          Could not load data
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <>
       {/* Context bar — only shown when arriving from a project board */}
@@ -1609,7 +1691,7 @@ export default function ProductCataloguePage() {
 
         <section className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr]">
           {/* FiltersSidebar (future refactor) */}
-          <aside className="h-fit rounded-[18px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
+          <aside className="hidden h-fit rounded-[18px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5 lg:block">
             <div className="flex items-center justify-between">
               <div className="inline-flex items-center gap-2">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800 ring-1 ring-emerald-900/10">
@@ -1625,101 +1707,47 @@ export default function ProductCataloguePage() {
                 </div>
               </div>
             </div>
-
-            <div className="mt-4 space-y-4">
-              <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
-                <div className="text-xs font-semibold text-emerald-950">
-                  Supplier
-                </div>
-                <div className="mt-2 space-y-2">
-                  {filtersLoading ? (
-                    <div className="text-[12px] font-medium text-gray-500">
-                      Loading...
-                    </div>
-                  ) : null}
-                  {suppliers.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-gray-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSuppliers.includes(s.id)}
-                        onChange={() => {
-                          setCurrentPage(1);
-                          toggleSelection(
-                            s.id,
-                            selectedSuppliers,
-                            setSelectedSuppliers,
-                          );
-                        }}
-                        className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
-                      />
-                      <span>{s.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
-                <div className="text-xs font-semibold text-emerald-950">
-                  Tags
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {filtersLoading ? (
-                    <div className="text-[12px] font-medium text-gray-500">
-                      Loading...
-                    </div>
-                  ) : null}
-                  {tags.map((t) => (
-                    <label
-                      key={t.id}
-                      className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedTags.includes(t.id)}
-                        onChange={() => {
-                          setCurrentPage(1);
-                          toggleSelection(t.id, selectedTags, setSelectedTags);
-                        }}
-                        className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
-                      />
-                      <span>{t.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleClearFilters}
-                className="mt-1 inline-flex w-full items-center justify-center rounded-full bg-emerald-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40"
-              >
-                Clear All Filters
-              </button>
-              {filtersError ? (
-                <div className="text-[12px] font-medium text-gray-500">
-                  Could not load data
-                </div>
-              ) : null}
-            </div>
+            {renderFiltersContent()}
           </aside>
 
           <section className="rounded-[22px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5 sm:p-5 flex flex-col min-h-[600px]">
             {/* CatalogueToolbar (future refactor) */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative w-full sm:max-w-[520px]">
-                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
-                  <Icon name="search" className="h-4.5 w-4.5" />
-                </span>
-                <input
-                  type="search"
-                  placeholder="Search products by name or manufacturer..."
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  className="h-10 w-full rounded-full bg-gray-100 pl-10 pr-4 text-sm font-medium text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
-                />
+              <div className="w-full sm:max-w-[520px]">
+                <div className="flex items-center gap-2 lg:hidden">
+                  <div className="relative flex-1 min-w-0">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                      <Icon name="search" className="h-4.5 w-4.5" />
+                    </span>
+                    <input
+                      type="search"
+                      placeholder="Search products by name or manufacturer..."
+                      value={searchInput}
+                      onChange={(event) => setSearchInput(event.target.value)}
+                      className="h-10 w-full rounded-full bg-gray-100 pl-10 pr-4 text-sm font-medium text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFiltersOpen(true)}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-emerald-900 ring-1 ring-gray-200 shadow-sm"
+                    aria-label="Open filters"
+                  >
+                    <Icon name="sliders" className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="relative hidden lg:block">
+                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                    <Icon name="search" className="h-4.5 w-4.5" />
+                  </span>
+                  <input
+                    type="search"
+                    placeholder="Search products by name or manufacturer..."
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    className="h-10 w-full rounded-full bg-gray-100 pl-10 pr-4 text-sm font-medium text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-2 sm:justify-end">
@@ -1799,7 +1827,6 @@ export default function ProductCataloguePage() {
                 </div>
               </div>
             </div>
-
             {/* ProductGrid (future refactor) */}
             <Pagination
               className="mt-4"
@@ -1898,6 +1925,53 @@ export default function ProductCataloguePage() {
           setChangeModal(null);
         }}
       />
+
+      {mobileFiltersOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close filters"
+            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+            onClick={() => setMobileFiltersOpen(false)}
+          />
+          <aside className="fixed inset-y-0 left-0 z-50 h-dvh w-[65%] max-w-sm overflow-y-auto bg-white p-4 shadow-2xl lg:hidden">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-2">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800 ring-1 ring-emerald-900/10">
+                  <Icon name="sliders" className="h-5 w-5" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold text-emerald-950">Filters</div>
+                  <div className="text-xs font-semibold text-gray-500">
+                    Refine results
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close filters"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-4.5 w-4.5"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 6l12 12M18 6 6 18"
+                    className="stroke-current fill-none"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            {renderFiltersContent()}
+          </aside>
+        </>
+      ) : null}
 
       {galleryOpen ? (
         <dialog

@@ -10,6 +10,7 @@ import {
   DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   closestCorners,
   useSensor,
   useSensors,
@@ -135,6 +136,12 @@ export default function AdminManufacturersPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -421,7 +428,17 @@ export default function AdminManufacturersPage() {
     return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [pendingAction]);
 
-  if (!adminChecked || !isAdmin) {
+  const alreadyAdmin = user.role === "admin";
+
+  if (headerUserLoading && !alreadyAdmin) {
+    return (
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
     return (
       <div className="rounded-[18px] bg-white p-6 text-gray-900">
         Checking access...
@@ -512,23 +529,30 @@ export default function AdminManufacturersPage() {
                     <SortableItem key={manufacturer.id} id={manufacturer.id}>
                       {(handleProps) => (
                         <div
-                          className={`grid gap-3 rounded-[14px] p-3 ring-1 items-center md:grid-cols-[auto_1fr_auto] ${
+                          className={`grid grid-cols-[auto_1fr_auto] gap-2 rounded-[14px] p-3 ring-1 items-center sm:gap-3 md:grid-cols-[auto_1fr_auto] ${
+                            editingId === manufacturer.id
+                              ? "grid-cols-1 md:grid-cols-[auto_1fr_auto] md:items-center"
+                              : ""
+                          } ${
                             manufacturer.is_archived
                               ? "bg-gray-100 ring-gray-300"
                               : "bg-gray-50 ring-gray-200"
                           }`}
                         >
                           {/* Drag handle */}
-                          <div
+                          <button
+                            type="button"
+                            aria-label="Drag to reorder"
+                            style={{ touchAction: "none" }}
                             {...handleProps}
-                            className="flex items-center justify-center self-stretch cursor-grab active:cursor-grabbing rounded-lg px-2 hover:bg-gray-200 transition-colors"
+                            className="flex min-h-10 min-w-10 items-center justify-center cursor-grab rounded-lg px-2 sm:px-3 transition-colors hover:bg-gray-200 active:cursor-grabbing"
                           >
                             <DragHandleIcon className="h-4 w-4 text-gray-400" />
-                          </div>
+                          </button>
 
                           {/* Name / edit inputs */}
                           {editingId === manufacturer.id ? (
-                            <div className="grid gap-2 md:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-2 rounded-[14px] p-3 ring-1 md:grid-cols-3">
                               <input
                                 value={editingManufacturer.name}
                                 onChange={(e) =>
@@ -537,7 +561,7 @@ export default function AdminManufacturersPage() {
                                     name: e.target.value,
                                   }))
                                 }
-                                className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200"
+                                className="h-9 w-full min-w-0 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200"
                               />
                               <input
                                 value={editingManufacturer.default_rfq_email}
@@ -547,7 +571,7 @@ export default function AdminManufacturersPage() {
                                     default_rfq_email: e.target.value,
                                   }))
                                 }
-                                className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200"
+                                className="h-9 w-full min-w-0 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200"
                               />
                               <input
                                 value={
@@ -560,14 +584,14 @@ export default function AdminManufacturersPage() {
                                       e.target.value,
                                   }))
                                 }
-                                className="h-9 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200"
+                                className="h-9 w-full min-w-0 rounded-[10px] bg-white px-3 text-sm ring-1 ring-gray-200"
                               />
                             </div>
                           ) : (
-                            <div className="text-sm text-gray-800">
-                              <div className="font-semibold text-gray-900">
+                            <div className="min-w-0 space-y-1 text-sm font-semibold text-gray-900 sm:space-y-0">
+                              <div>
                                 {manufacturer.name}
-                                <span className="ml-2 text-xs font-medium text-gray-500">
+                                <span className="block text-xs font-medium text-gray-500 sm:ml-2 sm:inline">
                                   ({manufacturer.slug})
                                 </span>
                                 {manufacturer.is_archived ? (
@@ -576,7 +600,7 @@ export default function AdminManufacturersPage() {
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="mt-1 text-xs text-gray-600">
+                              <div className="col-span-3 text-xs text-gray-700 md:col-span-1 md:text-sm break-words">
                                 Email: {manufacturer.default_rfq_email || "—"} ·
                                 Subject:{" "}
                                 {manufacturer.default_rfq_subject_template ||
@@ -590,7 +614,13 @@ export default function AdminManufacturersPage() {
                           )}
 
                           {/* Actions — Edit / Archive / Unarchive unchanged */}
-                          <div className="flex flex-wrap items-center justify-end gap-2">
+                          <div
+                            className={
+                              editingId === manufacturer.id
+                                ? "flex w-full items-center gap-2 md:w-auto md:justify-end"
+                                : "col-span-3 flex items-center justify-end gap-2 md:col-span-1"
+                            }
+                          >
                             {editingId === manufacturer.id ? (
                               <>
                                 {manufacturer.is_archived ? (
@@ -599,7 +629,7 @@ export default function AdminManufacturersPage() {
                                     onClick={() =>
                                       setArchived(manufacturer, false)
                                     }
-                                    className="h-8 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white"
+                                    className="h-8 flex-1 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white md:flex-none"
                                   >
                                     Unarchive
                                   </button>
@@ -607,7 +637,7 @@ export default function AdminManufacturersPage() {
                                   <button
                                     type="button"
                                     onClick={() => openArchiveModal(manufacturer)}
-                                    className="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white"
+                                    className="h-8 flex-1 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white md:flex-none"
                                   >
                                     Archive
                                   </button>
@@ -615,14 +645,14 @@ export default function AdminManufacturersPage() {
                                 <button
                                   type="button"
                                   onClick={saveManufacturer}
-                                  className="h-8 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white"
+                                  className="h-8 flex-1 rounded-lg bg-emerald-900 px-3 text-xs font-semibold text-white md:flex-none"
                                 >
                                   Save
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setEditingId(null)}
-                                  className="h-8 rounded-lg bg-white px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200"
+                                  className="h-8 flex-1 rounded-lg bg-white px-3 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 md:flex-none"
                                 >
                                   Cancel
                                 </button>

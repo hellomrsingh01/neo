@@ -792,7 +792,17 @@ export default function ProductEditorForm({
     }
   };
 
-  if (!adminChecked || !isAdmin) {
+  const alreadyAdmin = user.role === "admin";
+
+  if (headerUserLoading && !alreadyAdmin) {
+    return (
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
     return (
       <div className="rounded-[18px] bg-white p-6 text-gray-900">
         Checking access...

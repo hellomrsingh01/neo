@@ -524,6 +524,19 @@ export default function ProjectBoardDetailPage() {
 
   const saveAll = useCallback(async () => {
     if (!projectId || !canEdit || !dirty || saving) return;
+    const sectionsToSave = sections.map((section, index) => ({
+      ...section,
+      sort_order: index,
+      name: section.name.trim(),
+    }));
+    const hasEmptySectionName = sectionsToSave.some(
+      (section) => section.name.length === 0,
+    );
+    if (hasEmptySectionName) {
+      setError("Please enter a section name before saving.");
+      return;
+    }
+
     setSaving(true);
     setError("");
     const tickBeforeSave = dirtyTickRef.current;
@@ -541,8 +554,8 @@ export default function ProjectBoardDetailPage() {
 
       const sectionMap = new Map<string, string>();
 
-      for (let index = 0; index < sections.length; index += 1) {
-        const section = sections[index];
+      for (let index = 0; index < sectionsToSave.length; index += 1) {
+        const section = sectionsToSave[index];
         if (section.id.startsWith("tmp-section-")) {
           const { data: inserted, error: insertError } = await supabase
             .from("project_sections")
@@ -564,7 +577,7 @@ export default function ProjectBoardDetailPage() {
         }
       }
 
-      const resolvedSections = sections.map((section, index) => ({
+      const resolvedSections = sectionsToSave.map((section, index) => ({
         ...section,
         id: sectionMap.get(section.id) ?? section.id,
         sort_order: index,
@@ -955,7 +968,7 @@ export default function ProjectBoardDetailPage() {
   // ─── Loading & error states ───────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="w-full max-w-[1240px] mx-auto px-4 pb-10 mt-6">
+      <main className="w-full max-w-[1240px] mx-auto px-4 pb-10 mt-6 flex items-center justify-center w-full h-[60vh]">
         <p className="text-sm font-medium text-emerald-100/80">
           Loading project…
         </p>
@@ -995,7 +1008,7 @@ export default function ProjectBoardDetailPage() {
 
   if (loading) {
     return (
-      <main className="mt-6">
+      <main className="mt-6 flex items-center justify-center w-full h-[60vh]">
         <p className="text-sm font-medium text-emerald-100/80">
           Loading project…
         </p>
@@ -1028,15 +1041,25 @@ export default function ProjectBoardDetailPage() {
       <main className="mt-6 space-y-5">
         {/* ── Header ── */}
         <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-start">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">
-              {projectName}
-            </h1>
-            {showAdminAccessBadge ? (
-              <span className="mt-2 inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
-                Admin Access
-              </span>
-            ) : null}
+          <div className="w-full sm:w-auto">
+            <div className="flex items-start justify-between gap-3 sm:block">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight text-white">
+                  {projectName}
+                </h1>
+                {showAdminAccessBadge ? (
+                  <span className="mt-2 inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
+                    Admin Access
+                  </span>
+                ) : null}
+              </div>
+              <Link
+                href={backHref}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-800/80 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-emerald-700 sm:hidden"
+              >
+                {backLabel}
+              </Link>
+            </div>
             <div className="mt-2 flex flex-wrap gap-6 text-sm">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100/50">
@@ -1133,7 +1156,7 @@ export default function ProjectBoardDetailPage() {
             ) : null}
             <Link
               href={backHref}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-800/80 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-emerald-700"
+              className="hidden items-center gap-1.5 rounded-lg bg-emerald-800/80 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-emerald-700 sm:inline-flex"
             >
               {backLabel}
             </Link>
@@ -1141,7 +1164,7 @@ export default function ProjectBoardDetailPage() {
         </div>
 
         {/* ── Stats row ── */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200/80">
             <p className="text-sm font-medium text-gray-400">Total Items</p>
             <p className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
@@ -1154,7 +1177,7 @@ export default function ProjectBoardDetailPage() {
               {items.reduce((sum, i) => sum + i.quantity, 0)}
             </p>
           </div>
-          <div className="rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200/80">
+          <div className="col-span-2 rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200/80 sm:col-span-1">
             <p className="text-sm font-medium text-gray-400">Status</p>
             <div className="mt-1 flex items-center gap-2">
               <svg
@@ -1198,9 +1221,9 @@ export default function ProjectBoardDetailPage() {
         ) : null}
 
         {/* ── Two-column layout ── */}
-        <div className="flex gap-4 pb-10">
+        <div className="flex flex-col gap-4 pb-10 lg:flex-row">
           {/* Left: Rooms / Sections sidebar */}
-          <div className="w-[280px] shrink-0 rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 overflow-hidden">
+          <div className="w-full lg:w-[280px] lg:shrink-0 rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-bold text-gray-900">
                 Rooms / Sections
@@ -1222,11 +1245,11 @@ export default function ProjectBoardDetailPage() {
 
               {/* Sections list — scrollable only when more than 5 */}
               <div
-                className="space-y-1"
-                style={{
-                  maxHeight: sections.length > 5 ? "400px" : "none",
-                  overflowY: sections.length > 5 ? "auto" : "visible",
-                }}
+                className={`space-y-1 max-h-[250px] overflow-y-auto ${
+                  sections.length > 5
+                    ? "sm:max-h-[400px] sm:overflow-y-auto"
+                    : "sm:max-h-none sm:overflow-visible"
+                }`}
               >
                 <SortableContext
                   items={sections.map((s) => s.id)}
@@ -1365,7 +1388,7 @@ export default function ProjectBoardDetailPage() {
           </div>
 
           {/* Right: Content area */}
-          <div className="flex-1 rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 overflow-hidden flex flex-col">
+          <div className="min-w-0 flex-1 rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 overflow-hidden flex flex-col">
             {/* Top bar */}
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 flex-wrap">
               <input
@@ -1409,15 +1432,13 @@ export default function ProjectBoardDetailPage() {
                   disabled={!canEdit}
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-600"
                 >
-                  <span className="text-lg font-bold leading-none">
-                    +
-                  </span>
+                  <span className="text-lg font-bold leading-none">+</span>{" "}
                   Add Products
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto max-h-[460px]">
+            <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[460px]">
               {/* Table */}
               {filteredItems.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center min-h-[300px] text-sm text-gray-400">
@@ -1426,7 +1447,7 @@ export default function ProjectBoardDetailPage() {
                     : "No items yet. Select a section or click Add Products."}
                 </div>
               ) : (
-                <table className="w-full border-collapse">
+                <table className="min-w-[860px] w-full border-collapse">
                   <thead>
                     <tr className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                       <th

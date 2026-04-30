@@ -68,8 +68,33 @@ export default function AdminProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importSummary, setImportSummary] = useState("");
+
+  useEffect(() => {
+    if (showImportModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showImportModal]);
+
+  useEffect(() => {
+    if (mobileFiltersOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileFiltersOpen]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -391,7 +416,17 @@ export default function AdminProductsPage() {
       year: "numeric",
     });
 
-  if (!adminChecked || !isAdmin) {
+  const alreadyAdmin = user.role === "admin";
+
+  if (headerUserLoading && !alreadyAdmin) {
+    return (
+      <div className="rounded-[18px] bg-white p-6 text-gray-900">
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
     return (
       <div className="rounded-[18px] bg-white p-6 text-gray-900">
         Checking access...
@@ -404,38 +439,112 @@ export default function AdminProductsPage() {
           <section className="rounded-[18px] bg-white p-6 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ring-1 ring-black/5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold text-emerald-950">Product Management</h1>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center md:hidden">
+                <div className="flex items-center gap-2 md:hidden">
+                  <div className="min-w-0 flex-1">
+                    <input
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="Search by product or manufacturer"
+                      className="h-11 w-full rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Open filters"
+                    onClick={() => setMobileFiltersOpen(true)}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-emerald-900 ring-1 ring-gray-200 shadow-sm"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M4 6h9M17 6h3M10 6v0"
+                        className="stroke-current fill-none"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M4 12h3M11 12h9M7 12v0"
+                        className="stroke-current fill-none"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M4 18h13M21 18h-3M16 18v0"
+                        className="stroke-current fill-none"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                      />
+                      <circle
+                        cx="10"
+                        cy="6"
+                        r="2.1"
+                        className="stroke-current fill-none"
+                        strokeWidth="1.6"
+                      />
+                      <circle
+                        cx="7"
+                        cy="12"
+                        r="2.1"
+                        className="stroke-current fill-none"
+                        strokeWidth="1.6"
+                      />
+                      <circle
+                        cx="16"
+                        cy="18"
+                        r="2.1"
+                        className="stroke-current fill-none"
+                        strokeWidth="1.6"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 md:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportModal(true)}
+                    className="h-10 w-full rounded-[12px] bg-gray-100 px-4 text-sm text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+                  >
+                    Import CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/products/new")}
+                    className="h-10 w-full rounded-[12px] bg-emerald-900 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+                  >
+                    Add New Product
+                  </button>
+                </div>
+              </div>
+              <div className="hidden w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center md:flex">
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by product or manufacturer"
+                className="h-10 w-full sm:w-70 rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
+              />
                 <button
                   type="button"
                   onClick={() => setShowImportModal(true)}
-                  className="h-10 rounded-[12px] bg-gray-100 px-4 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+                  className="h-10 w-full rounded-[12px] bg-gray-100 px-4 text-sm text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50 sm:w-auto"
                 >
                   Import CSV
                 </button>
                 <button
                   type="button"
                   onClick={() => router.push("/admin/products/new")}
-                  className="h-10 rounded-[12px] bg-emerald-900 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+                  className="h-10 w-full rounded-[12px] bg-emerald-900 px-4 text-sm font-semibold text-white hover:bg-emerald-800 sm:w-auto"
                 >
                   Add New Product
                 </button>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-4">
-              <input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by product or manufacturer"
-                className="h-10 rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/35"
-              />
-              <label className="inline-flex h-10 items-center gap-2 rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200">
-                <input
-                  type="checkbox"
-                  checked={showArchived}
-                  onChange={(event) => setShowArchived(event.target.checked)}
-                  className="h-4 w-4"/>Show archived</label>
-
+            <div className="mt-5 hidden gap-3 md:grid md:grid-cols-4">
               <select
                 value={selectedCategory}
                 onChange={(event) => setSelectedCategory(event.target.value)}
@@ -462,6 +571,13 @@ export default function AdminProductsPage() {
                 ))}
               </select>
 
+              <label className="inline-flex h-10 items-center gap-2 rounded-[12px] bg-gray-100 px-3 text-sm ring-1 ring-gray-200">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.target.checked)}
+                  className="h-4 w-4"/>Show archived</label>
+
               <button
                 type="button"
                 onClick={() => {
@@ -470,7 +586,7 @@ export default function AdminProductsPage() {
                   setSelectedCategory("");
                   setSelectedManufacturer("");
                 }}
-                className="h-10 rounded-[12px] bg-gray-100 px-3 text-sm font-semibold text-gray-700 ring-1 ring-gray-200"
+                className="h-10 rounded-[12px] bg-gray-100 px-3 text-sm text-gray-700 ring-1 ring-gray-200"
               >
                 Reset Filters
               </button>
@@ -481,17 +597,17 @@ export default function AdminProductsPage() {
             {saving ? <p className="mt-2 text-xs font-semibold text-gray-500">Saving...</p> : null}
 
             {!loading ? (
-              <div className="mt-5 overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+              <div className="mt-5 w-full overflow-x-auto">
+                <table className="min-w-[900px] md:min-w-full w-full table-auto border-separate border-spacing-0 text-left text-sm">
                   <thead>
                     <tr className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      <th className="border-b border-gray-200 px-3 py-3">Name</th>
-                      <th className="border-b border-gray-200 px-3 py-3">Manufacturer</th>
-                      <th className="border-b border-gray-200 px-3 py-3">Category</th>
-                      <th className="border-b border-gray-200 px-3 py-3">Product Type</th>
-                      <th className="border-b border-gray-200 px-3 py-3">Archived</th>
-                      <th className="border-b border-gray-200 px-3 py-3">Created</th>
-                      <th className="border-b border-gray-200 px-3 py-3 text-right">Action</th>
+                      <th className="border-b border-gray-200 px-2 py-2 md:px-3 md:py-3">Name</th>
+                      <th className="border-b border-gray-200 px-2 py-2 md:px-3 md:py-3">Manufacturer</th>
+                      <th className="border-b border-gray-200 px-2 py-2 md:px-3 md:py-3">Category</th>
+                      <th className="border-b border-gray-200 px-2 py-2 md:px-3 md:py-3">Product Type</th>
+                      <th className="border-b border-gray-200 px-2 py-2 md:px-3 md:py-3">Archived</th>
+                      <th className="border-b border-gray-200 px-2 py-2 md:px-3 md:py-3">Created</th>
+                      <th className="border-b border-gray-200 px-2 py-2 text-right md:px-3 md:py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -508,25 +624,25 @@ export default function AdminProductsPage() {
                           onClick={() => router.push(`/admin/products/${product.id}`)}
                           className="cursor-pointer hover:bg-gray-50"
                         >
-                          <td className="border-b border-gray-100 px-3 py-3 font-semibold text-gray-900">
-                            {product.name}
+                          <td className="border-b border-gray-100 px-2 py-2 font-semibold text-gray-900 md:px-3 md:py-3">
+                            <span className="block max-w-[260px] truncate">{product.name}</span>
                           </td>
-                          <td className="border-b border-gray-100 px-3 py-3 text-gray-700">
+                          <td className="whitespace-nowrap border-b border-gray-100 px-2 py-2 text-gray-700 md:px-3 md:py-3">
                             {product.manufacturers?.name ?? "—"}
                           </td>
-                          <td className="border-b border-gray-100 px-3 py-3 text-gray-700">
+                          <td className="whitespace-nowrap border-b border-gray-100 px-2 py-2 text-gray-700 md:px-3 md:py-3">
                             {product.categories?.name ?? "—"}
                           </td>
-                          <td className="border-b border-gray-100 px-3 py-3 text-gray-700">
+                          <td className="whitespace-nowrap border-b border-gray-100 px-2 py-2 text-gray-700 md:px-3 md:py-3">
                             {product.product_type ?? "—"}
                           </td>
-                          <td className="border-b border-gray-100 px-3 py-3 text-gray-700">
+                          <td className="whitespace-nowrap border-b border-gray-100 px-2 py-2 text-gray-700 md:px-3 md:py-3">
                             {product.is_archived ? "Yes" : "No"}
                           </td>
-                          <td className="border-b border-gray-100 px-3 py-3 text-gray-700">
+                          <td className="whitespace-nowrap border-b border-gray-100 px-2 py-2 text-gray-700 md:px-3 md:py-3">
                             {formatDate(product.created_at)}
                           </td>
-                          <td className="border-b border-gray-100 px-3 py-3 text-right">
+                          <td className="whitespace-nowrap border-b border-gray-100 px-2 py-2 text-right md:px-3 md:py-3">
                             <button
                               type="button"
                               onClick={(event) => void toggleArchiveState(event, product)}
@@ -546,9 +662,138 @@ export default function AdminProductsPage() {
               </div>
             ) : null}
           </section>
+      {mobileFiltersOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close filters"
+            onClick={() => setMobileFiltersOpen(false)}
+            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          />
+          <aside className="fixed inset-y-0 left-0 z-50 h-dvh w-[65%] max-w-sm overflow-y-auto bg-white p-4 text-gray-900 shadow-2xl md:hidden">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-2">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800 ring-1 ring-emerald-900/10">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M4 6h9M17 6h3M10 6v0"
+                      className="stroke-current fill-none"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M4 12h3M11 12h9M7 12v0"
+                      className="stroke-current fill-none"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M4 18h13M21 18h-3M16 18v0"
+                      className="stroke-current fill-none"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <circle cx="10" cy="6" r="2.1" className="stroke-current fill-none" strokeWidth="1.6" />
+                    <circle cx="7" cy="12" r="2.1" className="stroke-current fill-none" strokeWidth="1.6" />
+                    <circle cx="16" cy="18" r="2.1" className="stroke-current fill-none" strokeWidth="1.6" />
+                  </svg>
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold text-emerald-950">Filters</h2>
+                  <p className="text-xs font-semibold text-gray-500">Refine products</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close filters"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-4.5 w-4.5"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 6l12 12M18 6 6 18"
+                    className="stroke-current fill-none"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
+                <div className="mb-2 text-xs font-semibold text-emerald-950">Category</div>
+                <select
+                  value={selectedCategory}
+                  onChange={(event) => setSelectedCategory(event.target.value)}
+                  className="h-11 w-full rounded-xl bg-white px-3 text-sm font-medium text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                >
+                  <option value="">All categories</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
+                <div className="mb-2 text-xs font-semibold text-emerald-950">Manufacturer</div>
+                <select
+                  value={selectedManufacturer}
+                  onChange={(event) => setSelectedManufacturer(event.target.value)}
+                  className="h-11 w-full rounded-xl bg-white px-3 text-sm font-medium text-gray-900 ring-1 ring-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                >
+                  <option value="">All manufacturers</option>
+                  {manufacturers.map((manufacturer) => (
+                    <option key={manufacturer.id} value={manufacturer.id}>
+                      {manufacturer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rounded-[14px] bg-[#f3f6f5] p-3 ring-1 ring-emerald-900/10">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={showArchived}
+                    onChange={(event) => setShowArchived(event.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500/70"
+                  />
+                  Show archived
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setShowArchived(false);
+                  setSelectedCategory("");
+                  setSelectedManufacturer("");
+                }}
+                className="mt-1 inline-flex w-full items-center justify-center rounded-full bg-emerald-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40"
+              >
+                Clear Filters
+              </button>
+            </div>
+          </aside>
+        </>
+      ) : null}
       {showImportModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-[560px] rounded-[16px] bg-white p-5 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.22)] ring-1 ring-black/5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 px-4">
+          <div className="w-[90%] max-w-md rounded-[16px] bg-white p-4 text-gray-900 shadow-[0_18px_50px_rgba(0,0,0,0.22)] ring-1 ring-black/5 md:max-w-[560px] md:p-6">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-emerald-950">Import Products CSV</h2>
               <button
@@ -579,29 +824,26 @@ export default function AdminProductsPage() {
               Download CSV template
             </a>
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <input
                 type="file"
                 accept=".csv,text/csv"
                 onChange={handleImportFileChange}
                 className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-[10px] file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-gray-700"
               />
+              <button
+                type="button"
+                onClick={handleImportCsv}
+                disabled={saving}
+                className="h-9 w-full rounded-[10px] bg-emerald-900 px-3 text-xs font-semibold text-white disabled:opacity-70 sm:w-auto"
+              >
+                {saving ? "Importing..." : "Import"}
+              </button>
             </div>
 
             {importSummary ? (
               <p className="mt-3 text-sm font-semibold text-emerald-700">{importSummary}</p>
             ) : null}
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={handleImportCsv}
-                disabled={saving}
-                className="h-9 rounded-[10px] bg-emerald-900 px-3 text-xs font-semibold text-white disabled:opacity-70"
-              >
-                {saving ? "Importing..." : "Import"}
-              </button>
-            </div>
           </div>
         </div>
       ) : null}
