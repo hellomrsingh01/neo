@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function ForgotPasswordPage() {
@@ -9,6 +9,21 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown <= 0) {
+      return;
+    }
+
+    const intervalId = globalThis.setInterval(() => {
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => {
+      globalThis.clearInterval(intervalId);
+    };
+  }, [countdown]);
 
   const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +36,7 @@ export default function ForgotPasswordPage() {
       return;
     }
 
+    setCountdown(30);
     setLoading(true);
     setError("");
     setSuccessMessage("");
@@ -34,7 +50,14 @@ export default function ForgotPasswordPage() {
     );
 
     if (resetError) {
-      setError("Something went wrong. Please try again.");
+      if (resetError.message?.includes("over_email_send_rate_limit")) {
+        setError(
+          "Too many reset attempts. Please wait a few minutes before trying again.",
+        );
+      } else {
+        setError("Something went wrong while sending the reset link. Please try again in a moment."
+);
+      }
       setLoading(false);
       return;
     }
@@ -110,7 +133,7 @@ export default function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@neooffice.com"
                   className="block h-11 w-full rounded-[11px] border border-gray-200 bg-[#F5F5F5] px-10 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/60 focus:border-emerald-500/60"
-                  disabled={loading}
+                  disabled={loading || countdown > 0}
                 />
               </div>
               {error ? (
@@ -126,11 +149,16 @@ export default function ForgotPasswordPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || countdown > 0}
                 className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-[11px] bg-emerald-900 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {loading ? "Sending..." : "Continue"}
               </button>
+              {countdown > 0 ? (
+                <p className="mt-2 text-left text-xs text-[#6B7281]">
+                  Please wait {countdown}s before requesting another reset link.
+                </p>
+              ) : null}
             </form>
           </section>
         </div>
