@@ -224,7 +224,7 @@ export default function Header() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white text-gray-700 ring-1 ring-gray-300/80 md:hidden"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white text-gray-700 ring-1 ring-gray-300/80 lg:hidden"
               aria-label="Open navigation menu"
               onClick={() => setMobileMenuOpen(true)}
             >
@@ -244,7 +244,7 @@ export default function Header() {
             </button>
             <Link
               href="/dashboard"
-              className="cursor-pointer transition-opacity hover:opacity-90"
+              className="shrink-0 cursor-pointer transition-opacity hover:opacity-90"
               aria-label="Go to dashboard"
             >
               <Image
@@ -259,7 +259,7 @@ export default function Header() {
             </Link>
           </div>
 
-          <div className="relative hidden md:block">
+          <div className="relative hidden lg:block">
             <nav className="flex items-center justify-center gap-2">
               <NavTab
                 label="Dashboard"
@@ -309,7 +309,7 @@ export default function Header() {
           </div>
 
           <div className="flex flex-1 items-center justify-end gap-2.5">
-            <div className="relative hidden w-full max-w-[320px] sm:block">
+            <div className="relative hidden w-full max-w-[320px] lg:block">
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
                 <HeaderIcon name="search" className="h-4 w-4" />
               </span>
@@ -331,7 +331,7 @@ export default function Header() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {[
                 { label: "Settings", icon: "settings" as const },
                 { label: "Notifications", icon: "bell" as const },
@@ -357,7 +357,7 @@ export default function Header() {
         </div>
       </div>
       {mobileMenuOpen ? (
-        <div className="md:hidden">
+        <div className="lg:hidden">
           <button
             type="button"
             className="fixed inset-0 z-40 h-dvh bg-black/40"
@@ -366,7 +366,8 @@ export default function Header() {
           />
           <dialog
             open
-            className="fixed left-0 top-0 bottom-0 z-50 h-dvh w-[60%] max-w-sm overflow-y-auto bg-white shadow-xl md:hidden transition-transform duration-300 ease-in-out"            aria-modal="true"
+            className="fixed left-0 top-0 bottom-0 z-50 h-dvh w-[60%] max-w-sm overflow-y-auto bg-white shadow-xl lg:hidden transition-transform duration-300 ease-in-out"
+            aria-modal="true"
           >
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
               <div className="inline-flex items-center gap-2">
