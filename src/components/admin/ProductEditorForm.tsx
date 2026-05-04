@@ -11,7 +11,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -107,10 +106,6 @@ export default function ProductEditorForm({
   const router = useRouter();
   const { user, loading: headerUserLoading } = useHeaderUser();
   const isEditMode = Boolean(productId);
-
-  const [adminChecked, setAdminChecked] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const accessResolvedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -306,11 +301,9 @@ export default function ProductEditorForm({
   }, [productId]);
 
   useEffect(() => {
-    if (accessResolvedRef.current || headerUserLoading) return;
+    if (headerUserLoading) return;
 
     const loadEditorData = async () => {
-      setIsAdmin(true);
-      setAdminChecked(true);
       setLoading(true);
       try {
         await loadBaseData();
@@ -326,61 +319,15 @@ export default function ProductEditorForm({
       }
     };
 
-    if (user.role && user.role !== "admin") {
-      accessResolvedRef.current = true;
+    if (user.role !== "admin") {
       router.replace("/dashboard");
       return;
     }
 
     if (user.role === "admin") {
-      accessResolvedRef.current = true;
       void loadEditorData();
       return;
     }
-
-    const checkAdminAndLoad = async () => {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        const userId = authData.user?.id;
-
-        if (!userId) {
-          accessResolvedRef.current = true;
-          router.replace("/");
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", userId)
-          .maybeSingle<{ role: string | null }>();
-
-        if (profile?.role !== "admin") {
-          accessResolvedRef.current = true;
-          router.replace("/dashboard");
-          return;
-        }
-
-        accessResolvedRef.current = true;
-        setIsAdmin(true);
-        setAdminChecked(true);
-        setLoading(true);
-        await loadBaseData();
-        if (isEditMode) {
-          await loadProduct();
-        }
-      } catch (loadError) {
-        const message =
-          loadError instanceof Error
-            ? loadError.message
-            : "Failed to load data.";
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void checkAdminAndLoad();
   }, [headerUserLoading, isEditMode, loadBaseData, loadProduct, router, user.role]);
 
   useEffect(() => {
@@ -802,12 +749,8 @@ export default function ProductEditorForm({
     );
   }
 
-  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
-    return (
-      <div className="rounded-[18px] bg-white p-6 text-gray-900">
-        Checking access...
-      </div>
-    );
+  if (!alreadyAdmin) {
+    return null;
   }
 
   return (

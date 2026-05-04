@@ -3,7 +3,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { useHeaderUser } from "@/components/providers/HeaderUserProvider";
 import { useRouter } from "next/navigation";
-import { ChangeEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 
 type ProductListRow = {
   id: string;
@@ -51,9 +51,6 @@ type SubcategoryOption = {
 export default function AdminProductsPage() {
   const router = useRouter();
   const { user, loading: headerUserLoading } = useHeaderUser();
-  const [adminChecked, setAdminChecked] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const accessResolvedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -177,51 +174,14 @@ export default function AdminProductsPage() {
   };
 
   useEffect(() => {
-    if (accessResolvedRef.current || headerUserLoading) return;
+    if (headerUserLoading) return;
 
-    if (user.role && user.role !== "admin") {
-      accessResolvedRef.current = true;
+    if (user.role !== "admin") {
       router.replace("/dashboard");
       return;
     }
 
-    if (user.role === "admin") {
-      accessResolvedRef.current = true;
-      setIsAdmin(true);
-      setAdminChecked(true);
-      void loadData();
-      return;
-    }
-
-    const checkAdminAndLoad = async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData.user?.id;
-
-      if (!userId) {
-        accessResolvedRef.current = true;
-        router.replace("/");
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .maybeSingle<{ role: string | null }>();
-
-      if (profile?.role !== "admin") {
-        accessResolvedRef.current = true;
-        router.replace("/dashboard");
-        return;
-      }
-
-      accessResolvedRef.current = true;
-      setIsAdmin(true);
-      setAdminChecked(true);
-      await loadData();
-    };
-
-    void checkAdminAndLoad();
+    void loadData();
   }, [headerUserLoading, router, user.role]);
 
   const toggleArchiveState = async (event: MouseEvent, product: ProductListRow) => {
@@ -426,12 +386,8 @@ export default function AdminProductsPage() {
     );
   }
 
-  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
-    return (
-      <div className="rounded-[18px] bg-white p-6 text-gray-900">
-        Checking access...
-      </div>
-    );
+  if (!alreadyAdmin) {
+    return null;
   }
 
   return (
