@@ -24,7 +24,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Manufacturer = {
   id: string;
@@ -114,9 +114,6 @@ function SortableItem({
 export default function AdminManufacturersPage() {
   const router = useRouter();
   const { user, loading: headerUserLoading } = useHeaderUser();
-  const [adminChecked, setAdminChecked] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const accessResolvedRef = useRef(false);
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,51 +165,14 @@ export default function AdminManufacturersPage() {
   }, []);
 
   useEffect(() => {
-    if (accessResolvedRef.current || headerUserLoading) return;
+    if (headerUserLoading) return;
 
-    if (user.role && user.role !== "admin") {
-      accessResolvedRef.current = true;
+    if (user.role !== "admin") {
       router.replace("/dashboard");
       return;
     }
 
-    if (user.role === "admin") {
-      accessResolvedRef.current = true;
-      setIsAdmin(true);
-      setAdminChecked(true);
-      void loadManufacturers();
-      return;
-    }
-
-    const checkAdmin = async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData.user?.id;
-
-      if (!userId) {
-        accessResolvedRef.current = true;
-        router.replace("/");
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .maybeSingle<{ role: string | null }>();
-
-      if (profile?.role !== "admin") {
-        accessResolvedRef.current = true;
-        router.replace("/dashboard");
-        return;
-      }
-
-      accessResolvedRef.current = true;
-      setIsAdmin(true);
-      setAdminChecked(true);
-      void loadManufacturers();
-    };
-
-    void checkAdmin();
+    void loadManufacturers();
   }, [headerUserLoading, loadManufacturers, router, user.role]);
 
   const persistOrder = useCallback(
@@ -438,12 +398,8 @@ export default function AdminManufacturersPage() {
     );
   }
 
-  if (!alreadyAdmin && (!adminChecked || !isAdmin)) {
-    return (
-      <div className="rounded-[18px] bg-white p-6 text-gray-900">
-        Checking access...
-      </div>
-    );
+  if (!alreadyAdmin) {
+    return null;
   }
 
   return (
