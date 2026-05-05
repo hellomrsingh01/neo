@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
@@ -30,7 +31,14 @@ const DEFAULT_HEADER_USER: HeaderUser = {
 
 const HeaderUserContext = createContext<HeaderUserContextValue | null>(null);
 
-function mapUser(authUser: User, profile: { full_name: string | null; email: string | null; role: string | null } | null): HeaderUser {
+function mapUser(
+  authUser: User,
+  profile: {
+    full_name: string | null;
+    email: string | null;
+    role: string | null;
+  } | null
+): HeaderUser {
   return {
     fullName: (profile?.full_name ?? "").trim() || "Your name",
     email: profile?.email ?? authUser.email ?? "you@neooffice.com",
@@ -38,16 +46,26 @@ function mapUser(authUser: User, profile: { full_name: string | null; email: str
   };
 }
 
-export function HeaderUserProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+export function HeaderUserProvider({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   const [user, setUser] = useState<HeaderUser>(DEFAULT_HEADER_USER);
   const [loading, setLoading] = useState(true);
+  const resolvedUserIdRef = useRef<string | null>(null);
 
   const resolveUser = useCallback(async (sessionUser?: User | null) => {
-    const authUser = sessionUser ?? (await supabase.auth.getUser()).data.user ?? null;
+    const authUser =
+      sessionUser ?? (await supabase.auth.getUser()).data.user ?? null;
 
     if (!authUser?.id) {
-      // Only clear role on true session loss/logout.
       setUser(DEFAULT_HEADER_USER);
+      resolvedUserIdRef.current = null;
+      setLoading(false);
+      return;
+    }
+
+    // Same user (e.g. TOKEN_REFRESHED on tab return) — skip profile re-fetch
+    if (resolvedUserIdRef.current === authUser.id) {
       setLoading(false);
       return;
     }
@@ -62,6 +80,7 @@ export function HeaderUserProvider({ children }: Readonly<{ children: React.Reac
         role: string | null;
       }>();
 
+    resolvedUserIdRef.current = authUser.id;
     setUser(mapUser(authUser, profile ?? null));
     setLoading(false);
   }, []);
@@ -83,24 +102,28 @@ export function HeaderUserProvider({ children }: Readonly<{ children: React.Reac
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session: Session | null) => {
-      if (!active) return;
-
-      if (event === "SIGNED_OUT" || !session?.user) {
-        setUser(DEFAULT_HEADER_USER);
-        setLoading(false);
-        return;
-      }
-
-      // Preserve last known role while refreshing.
-      setLoading(true);
-      try {
-        await resolveUser(session.user);
-      } catch {
+    } = supabase.auth.onAuthStateChange(
+      async (event, session: Session | null) => {
         if (!active) return;
-        setLoading(false);
+
+        if (event === "SIGNED_OUT" || !session?.user) {
+          setUser(DEFAULT_HEADER_USER);
+          resolvedUserIdRef.current = null;
+          setLoading(false);
+          return;
+        }
+
+        // Only show loading for actual new sign-ins, not silent TOKEN_REFRESHED
+        if (event === "SIGNED_IN") setLoading(true);
+
+        try {
+          await resolveUser(session.user);
+        } catch {
+          if (!active) return;
+          setLoading(false);
+        }
       }
-    });
+    );
 
     return () => {
       active = false;
@@ -113,7 +136,7 @@ export function HeaderUserProvider({ children }: Readonly<{ children: React.Reac
       user,
       loading,
     }),
-    [loading, user],
+    [loading, user]
   );
 
   return (
